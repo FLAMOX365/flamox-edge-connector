@@ -22,7 +22,7 @@ import { ExtensionWorkerHost } from "../runtime/extension-worker-host.ts";
 
 const projectIdentifierPattern = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/u;
 const extensionSdkSource =
-  "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/main/sdk/mod.ts";
+  "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/8140bcd622e7c3af9ac9d9af7fd7650b6f5310e7/sdk/mod.ts";
 const maximumJsonSchemaBytes = 256 * 1024;
 const bundledEntrypoint = "runtime/extension.js";
 
