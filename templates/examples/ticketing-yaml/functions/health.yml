@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../../schemas/yaml-function.schema.json
+# Health Check Endpoint
+# =====================
+#
+# Route: /health
+# Simple health check forwarded to the backend.
+
+target: "{{ env.TICKET_API_URL }}"
+
+# Allow GET only.
+methods: [GET]
+
+# Short timeout for health checks.
+timeout: 5000
+
+request:
+  headers:
+    set:
+      authorization: "Bearer {{ env.TICKET_API_TOKEN }}"
+  url:
+    # /health → /api/health
+    prefix: "/api"
+
+response:
+  headers:
+    add:
+      x-proxy: "flamox-edge-connector"

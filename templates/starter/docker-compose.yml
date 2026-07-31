@@ -1,0 +1,41 @@
+services:
+  flamox-edge-connector:
+    build: ../..
+    image: flamox-edge-connector:local
+    container_name: flamox-edge-connector
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${EDGE_CONNECTOR_BIND_PORT:-8080}:8080"
+    environment:
+      EDGE_CONNECTOR_DATA_DIRECTORY: /data
+      EDGE_CONNECTOR_EXTENSION_POLICY_FILE: /config/extension-policy.json
+      EDGE_CONNECTOR_TRUSTED_PUBLISHERS_FILE: /config/trusted-publishers.json
+      EDGE_CONNECTOR_LOG_LEVEL: ${EDGE_CONNECTOR_LOG_LEVEL:-info}
+      EDGE_CONNECTOR_DISPLAY_NAME: ${EDGE_CONNECTOR_DISPLAY_NAME:-Customer DMZ 1}
+      EDGE_CONNECTOR_MANAGEMENT_URL: ${EDGE_CONNECTOR_MANAGEMENT_URL:-}
+      EDGE_CONNECTOR_PAIRING_CODE: ${EDGE_CONNECTOR_PAIRING_CODE:-}
+      # Optional retained legacy transport.
+      EDGE_CONNECTOR_WS_URL: ${EDGE_CONNECTOR_WS_URL:-}
+      EDGE_CONNECTOR_TOKEN_ENDPOINT: ${EDGE_CONNECTOR_TOKEN_ENDPOINT:-}
+      EDGE_CONNECTOR_CLIENT_ID: ${EDGE_CONNECTOR_CLIENT_ID:-}
+      EDGE_CONNECTOR_CLIENT_SECRET: ${EDGE_CONNECTOR_CLIENT_SECRET:-}
+    volumes:
+      - connector-data:/data
+      - ./config:/config:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "run",
+          "--allow-net",
+          "--allow-env",
+          "runtime/health-check.ts",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  connector-data:

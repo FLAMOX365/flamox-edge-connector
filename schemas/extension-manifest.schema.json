@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.flamox.com/edge-connector/extension-manifest/v2.json",
+  "title": "Edge Connector Extension Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "displayName",
+    "description",
+    "publisher",
+    "version",
+    "runtime",
+    "capabilities",
+    "permissions",
+    "actions"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 2 },
+    "id": { "$ref": "#/$defs/identifier" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "publisher": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "entrypoint"],
+      "properties": {
+        "kind": { "const": "deno-worker" },
+        "entrypoint": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.(?:js|mjs|ts|mts)$"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/identifier" }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network", "secrets"],
+      "properties": {
+        "network": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:\\[[0-9a-fA-F:]+\\]|[a-zA-Z0-9.-]+)(?::\\d{1,5})?$"
+          }
+        },
+        "configuredNetwork": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["configurationPointer", "allowedPorts"],
+            "properties": {
+              "configurationPointer": {
+                "type": "string",
+                "pattern": "^/(?:[A-Za-z0-9_-]+)(?:/[A-Za-z0-9_-]+)*$"
+              },
+              "allowedPorts": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              }
+            }
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$"
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "idempotent", "timeoutSeconds"],
+        "properties": {
+          "name": { "$ref": "#/$defs/identifier" },
+          "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "idempotent": { "type": "boolean" },
+          "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 120 },
+          "inputSchema": { "$ref": "#/$defs/jsonSchemaPath" },
+          "outputSchema": { "$ref": "#/$defs/jsonSchemaPath" }
+        }
+      }
+    },
+    "contributions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/telephonyProviderContribution" }
+    },
+    "configurationSchema": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.json$"
+    },
+    "configurationUiSchema": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.json$"
+    },
+    "translations": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$" },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.json$"
+      }
+    },
+    "notices": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.(?:txt|md)$"
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "install": { "$ref": "#/$defs/identifier" },
+        "configure": { "$ref": "#/$defs/identifier" },
+        "activate": { "$ref": "#/$defs/identifier" },
+        "deactivate": { "$ref": "#/$defs/identifier" },
+        "migrate": { "$ref": "#/$defs/identifier" },
+        "uninstall": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "timeoutSeconds"],
+      "properties": {
+        "action": { "$ref": "#/$defs/identifier" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 60 }
+      }
+    }
+  },
+  "$defs": {
+    "jsonSchemaPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.json$"
+    },
+    "telephonyProviderContribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "area", "contract", "contractVersion", "operations"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "area": { "const": "telephony" },
+        "contract": { "const": "telephony.provider" },
+        "contractVersion": { "const": 1 },
+        "operations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["startCall", "endCall", "synchronizeCalls", "health"],
+          "properties": {
+            "startCall": { "$ref": "#/$defs/identifier" },
+            "endCall": { "$ref": "#/$defs/identifier" },
+            "synchronizeCalls": { "$ref": "#/$defs/identifier" },
+            "health": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      }
+    },
+    "identifier": {
+      "type": "string",
+      "maxLength": 120,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    }
+  }
+}

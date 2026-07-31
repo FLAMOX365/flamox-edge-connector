@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible Edge Connector defect.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Do not include credentials, customer data, or vulnerability details.
+        Use the private security-reporting link in the issue chooser for
+        security-sensitive reports.
+  - type: input
+    id: version
+    attributes:
+      label: Edge Connector version or commit
+      placeholder: v1.2.3 or full commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Deno version, operating system, and deployment form.
+      placeholder: Deno 2.9.4, Ubuntu 24.04, container
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: List the smallest deterministic sequence that triggers the defect.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted logs
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I searched existing issues for this defect.
+          required: true
+        - label: I removed credentials, private configuration, and customer data.
+          required: true
+        - label: This is not a vulnerability report.
+          required: true

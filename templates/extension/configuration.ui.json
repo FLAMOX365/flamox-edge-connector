@@ -1,0 +1,8 @@
+{
+  "order": ["targetHost"],
+  "fields": {
+    "targetHost": {
+      "placeholder": "appliance.customer.internal"
+    }
+  }
+}

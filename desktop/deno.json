@@ -1,0 +1,27 @@
+{
+  "name": "@flamox/edge-connector-desktop",
+  "version": "0.1.0",
+  "exports": "./main.ts",
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/path": "jsr:@std/path@1"
+  },
+  "tasks": {
+    "check": "deno check controller.ts contracts.ts path-picker.ts && deno check ui/app.js",
+    "test": "deno test --allow-env --allow-read --allow-write controller.spec.ts path-picker.spec.ts",
+    "dev": "deno desktop --hmr --allow-env --allow-net --allow-read --allow-write --allow-run=osascript,powershell.exe,pwsh,zenity,kdialog --include ui main.ts",
+    "build": "deno desktop --allow-env --allow-net --allow-read --allow-write --allow-run=osascript,powershell.exe,pwsh,zenity,kdialog --include ui main.ts"
+  },
+  "desktop": {
+    "app": {
+      "name": "Edge Connector Desktop",
+      "identifier": "de.flamox.edge-connector.desktop"
+    },
+    "backend": "webview",
+    "output": {
+      "macos": "./dist/Edge Connector Desktop.app",
+      "windows": "./dist/windows",
+      "linux": "./dist/The-Edge-Connector-Desktop.AppImage"
+    }
+  }
+}

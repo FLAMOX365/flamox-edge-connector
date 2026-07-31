@@ -1,0 +1,5 @@
+# AD Bridge API Dependencies
+flask>=3.0.0
+ldap3>=2.9.0
+gunicorn>=21.0.0
+

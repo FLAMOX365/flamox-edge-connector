@@ -1,0 +1,10 @@
+{
+  "name": "ad-user-export",
+  "version": "1.0.0",
+  "tasks": {
+    "check": "deno check functions/**/*.ts"
+  },
+  "imports": {
+    "@flamox/edge-connector-sdk": "jsr:@flamox/edge-connector-sdk@2"
+  }
+}

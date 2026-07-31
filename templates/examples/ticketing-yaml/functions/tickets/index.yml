@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../../../../schemas/yaml-function.schema.json
+# Ticketing API - YAML Declarative Function
+# ==========================================
+#
+# This YAML file defines a declarative proxy function.
+# Route: /tickets (all HTTP methods)
+#
+# Edge Connector:
+# 1. Receives requests over WebSocket
+# 2. Applies request transformations
+# 3. Forwards to the target
+# 4. Applies response transformations
+# 5. Sends the response back
+
+# Target URL for the proxy (required field)
+# Supports template variables: {{ env.VAR }}
+target: "{{ env.TICKET_API_URL }}"
+
+# Optional: Timeout in milliseconds (default: 30000)
+timeout: 30000
+
+# Optional: Allowed HTTP methods (default: all)
+# methods: [GET, POST, PUT, DELETE]
+
+# Request transformations (before proxying)
+request:
+  # Set, add, or remove headers.
+  headers:
+    set:
+      # Add authentication.
+      authorization: "Bearer {{ env.TICKET_API_TOKEN }}"
+      # Set the API version.
+      x-api-version: "2.0"
+      accept: "application/json"
+    add:
+      # Tracking headers.
+      x-request-id: "{{ context.requestId }}"
+      x-timestamp: "{{ context.startedAt }}"
+    remove:
+      # Remove internal headers.
+      - x-forwarded-for
+      - x-real-ip
+
+  # URL transformation.
+  url:
+    # /tickets/123 → /api/v2/tickets/123
+    prefix: "/api/v2"
+
+# Response transformations (after proxying)
+response:
+  # Sanitize headers.
+  headers:
+    add:
+      # Tracking headers in the response.
+      x-request-id: "{{ context.requestId }}"
+      x-processed-at: "{{ context.startedAt }}"
+    remove:
+      # Hide internal headers.
+      - x-internal-debug
+      - x-backend-server
+      - x-powered-by
+      - server
+      - via

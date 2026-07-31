@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.flamox.com/edge-connector/extension-policy.schema.json",
+  "title": "Local edge extension policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extensions"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "extensionId",
+          "publishers",
+          "capabilities",
+          "network",
+          "secrets"
+        ],
+        "properties": {
+          "extensionId": { "type": "string" },
+          "publishers": { "$ref": "#/$defs/uniqueStrings" },
+          "capabilities": { "$ref": "#/$defs/uniqueStrings" },
+          "network": { "$ref": "#/$defs/uniqueStrings" },
+          "allowConfiguredNetwork": { "type": "boolean", "default": false },
+          "secrets": { "$ref": "#/$defs/uniqueStrings" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "uniqueStrings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

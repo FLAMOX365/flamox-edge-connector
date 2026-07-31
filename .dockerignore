@@ -1,0 +1,9 @@
+**
+!deno.json
+!deno.lock
+!runtime/
+!runtime/**
+!sdk/
+!sdk/**
+runtime/**/*.spec.ts
+sdk/**/*.spec.ts

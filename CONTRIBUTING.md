@@ -1,0 +1,42 @@
+# Contributing
+
+The project uses Deno 2.9.4 or newer and keeps the runtime, SDK, and generated
+protocol models in one workspace. Fork the repository, create a focused branch,
+and keep each pull request small enough to review as one coherent change.
+
+Install the locked dependency graph before development:
+
+```bash
+deno install --frozen
+```
+
+Run the complete local gate before opening a pull request:
+
+```bash
+deno task check
+deno task lint
+deno task test
+deno task fmt
+deno task audit
+deno task verify:generated
+```
+
+Changes to `openapi/api.yml` require `deno task generate:api`. Never hand-edit
+`runtime/generated/`.
+
+Security-sensitive changes need focused tests for deny-by-default behavior,
+publisher verification, local policy, worker permissions, state recovery and
+failed-update rollback. Do not add transparent proxy fallbacks or routes that
+mutate extension state without the complete `ExtensionManager` verification
+path.
+
+Never commit credentials, publisher private keys, customer data, `.fmx`
+artifacts, runtime state, or local environment files. New bundled dependencies
+must be version-locked, security-audited, and accompanied by all license notices
+required for redistribution.
+
+Documentation, examples, schemas, and tests must change with the behavior they
+describe. Use `FLAMOX365` and `Edge Connector` exactly in human-readable text;
+do not combine them into one product name.
+
+The MIT license and original copyright notice remain in `LICENSE`.

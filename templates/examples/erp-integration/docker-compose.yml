@@ -1,0 +1,40 @@
+# ERP Integration Deployment
+# ==========================
+#
+# Start: docker-compose up -d
+# Logs:    docker-compose logs -f
+# Stop:    docker-compose down
+
+services:
+  flamox-edge-connector:
+    image: ghcr.io/ruederennes/flamox-edge-connector:latest
+    container_name: erp-flamox-edge-connector
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # WebSocket URL for the FLAMOX365 Cloud
+      - EDGE_CONNECTOR_WS_URL=${FLAMOX_WS_URL}
+      - EDGE_CONNECTOR_HOST=${FLAMOX_HOST}
+      - EDGE_CONNECTOR_CLIENT_ID=${FLAMOX_CLIENT_ID}
+      - EDGE_CONNECTOR_CLIENT_SECRET=${FLAMOX_CLIENT_SECRET}
+      - EDGE_CONNECTOR_LOG_LEVEL=${FLAMOX_LOG_LEVEL:-info}
+
+      # Function mode: path to the functions directory
+      - EDGE_CONNECTOR_FUNCTIONS_DIR=/functions
+
+      # SAP connection (available to the functions)
+      - ERP_URL=${ERP_URL}
+      - ERP_USER=${ERP_USER}
+      - ERP_PASSWORD=${ERP_PASSWORD}
+      - ERP_SYSTEM=${ERP_SYSTEM:-PRD}
+
+    volumes:
+      - ./functions:/functions:ro
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

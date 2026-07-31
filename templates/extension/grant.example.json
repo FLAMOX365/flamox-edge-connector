@@ -1,0 +1,5 @@
+{
+  "capabilities": ["customer.example.read"],
+  "network": ["appliance.customer.internal:443"],
+  "secrets": ["API_TOKEN"]
+}

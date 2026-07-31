@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Deno
+.deno/
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+!**/.env.example
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+build/
+out/
+*.fmx
+.edge/
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+
+# Test artifacts
+.test-cache/
+
+# Publisher private keys
+*.jwk
+
+# Connector runtime state and local trust configuration
+data/
+templates/starter/config/
+
+# Lock files from other package managers (we use deno.lock)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

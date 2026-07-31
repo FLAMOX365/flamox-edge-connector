@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Edge Connector Desktop</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <span class="eyebrow">Internal test host</span>
+        <h1>Edge Connector</h1>
+      </div>
+      <div class="runtime-indicator">
+        <span id="runtime-dot"></span><strong id="runtime-label"
+        >Stopped</strong>
+      </div>
+    </header>
+    <nav class="tabs" aria-label="Application sections">
+      <button class="tab active" data-tab="runtime">Runtime</button>
+      <button class="tab" data-tab="configuration">Configuration</button>
+      <button class="tab" data-tab="extensions">Extensions</button>
+      <button class="tab" data-tab="logs">Logs</button>
+    </nav>
+    <main>
+      <section id="panel-runtime" class="panel active">
+        <div class="hero card">
+          <div>
+            <span class="eyebrow">Same engine as the service binary</span>
+            <h2>Connector runtime</h2>
+            <p>
+              Start the listener, legacy Functions/YAML host, outbound WebSocket
+              and managed FLAMOX365 control-plane connection together.
+            </p>
+          </div>
+          <div class="button-row">
+            <button id="start" class="primary">Start connector</button>
+            <button id="stop" class="danger">Stop connector</button>
+            <button id="refresh">Refresh</button>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <article class="metric card">
+            <span>Cloud connection</span><strong id="connection-state"
+            >—</strong>
+          </article>
+          <article class="metric card">
+            <span>Last connected</span><strong id="last-connected">—</strong>
+          </article>
+          <article class="metric card">
+            <span>Reconnect attempt</span><strong id="reconnect-attempt"
+            >0</strong>
+          </article>
+          <article class="metric card">
+            <span>Installed extensions</span><strong id="extension-count"
+            >0</strong>
+          </article>
+        </div>
+        <div class="card stack">
+          <div class="section-heading">
+            <div><span class="eyebrow">Tenant-bound identity</span><h2>Managed connection</h2></div>
+            <span id="pairing-state" class="status">Not paired</span>
+          </div>
+          <div class="metric-grid compact">
+            <article
+              class="metric"><span>Connector ID</span><strong id="connector-id">—</strong></article>
+            <article
+              class="metric"><span>Tenant ID</span><strong id="tenant-id">—</strong></article>
+            <article
+              class="metric"><span>Desired revision</span><strong id="desired-revision">0</strong></article>
+            <article
+              class="metric"><span>Last synchronization</span><strong id="last-sync">—</strong></article>
+          </div>
+          <p id="managed-error" class="error-banner hidden"></p>
+        </div>
+        <div id="runtime-error" class="error-banner hidden" role="alert"></div>
+      </section>
+
+      <section id="panel-configuration" class="panel">
+        <form id="settings-form" class="card form-grid">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Listener</span><h2>
+                Runtime configuration
+              </h2>
+            </div>
+            <p>Settings are stored with owner-only filesystem permissions.</p>
+          </div>
+          <label>Display name<input
+              name="displayName"
+              required
+              maxlength="120"
+            ></label>
+          <label>Bind host<input name="bindHost" required></label>
+          <label>Bind port<input
+              name="bindPort"
+              type="number"
+              min="1"
+              max="65535"
+              required
+            ></label>
+          <label>Data directory
+            <div class="path-field">
+              <input id="data-directory" name="dataDirectory" required>
+              <button
+                type="button"
+                data-path-picker
+                data-path-target="data-directory"
+                data-path-kind="directory"
+                data-path-title="Choose connector data directory"
+              >Browse…</button>
+            </div>
+          </label>
+          <label>Legacy Functions/YAML directory
+            <div class="path-field">
+              <input
+                id="functions-directory"
+                name="functionsDirectory"
+                required
+              >
+              <button
+                type="button"
+                data-path-picker
+                data-path-target="functions-directory"
+                data-path-kind="directory"
+                data-path-title="Choose Functions and YAML directory"
+              >Browse…</button>
+            </div>
+          </label>
+          <label>Log level<select name="logLevel">
+              <option>debug</option>
+              <option>info</option>
+              <option>warn</option>
+              <option>error</option>
+            </select></label>
+
+          <div class="section-heading full">
+            <div>
+              <span class="eyebrow">Managed mode</span><h2>
+                FLAMOX365 control plane
+              </h2>
+            </div>
+            <p>
+              Pair once, then poll Desired State and deliver Observed State,
+              commands and audit.
+            </p>
+          </div>
+          <label class="full">Management URL<input
+              name="managementUrl"
+              type="url"
+              placeholder="https://api.example.com/api/v1/"
+            ></label>
+          <label class="full">One-time pairing code<input
+              name="pairingCode"
+              autocomplete="off"
+            ></label>
+
+          <div class="section-heading full">
+            <div>
+              <span class="eyebrow">Legacy compatibility</span><h2>
+                Existing WebSocket transport
+              </h2>
+            </div>
+          </div>
+          <label class="full">Outbound WebSocket URL<input
+              name="websocketUrl"
+              placeholder="wss://..."
+            ></label>
+          <label>Control-plane discovery URL<input
+              name="controlPlaneUrl"
+              placeholder="https://..."
+            ></label>
+          <label>Direct OAuth token endpoint<input
+              name="tokenEndpoint"
+              placeholder="https://..."
+            ></label>
+          <label>OAuth client ID<input name="clientId"></label>
+          <label>OAuth client secret<input
+              name="clientSecret"
+              type="password"
+              autocomplete="off"
+            ></label>
+          <label class="checkbox"><input
+              name="allowInsecureConnections"
+              type="checkbox"
+            >Allow HTTP/WS for local tests</label>
+
+          <div class="section-heading full">
+            <div>
+              <span class="eyebrow">Local safety overlay</span><h2>
+                Trust and policy files
+              </h2>
+            </div>
+            <p>
+              Optional local restrictions remain additive to FLAMOX365-managed
+              trust.
+            </p>
+          </div>
+          <label>Trusted publishers JSON
+            <div class="path-field">
+              <input
+                id="trusted-publishers-file"
+                name="trustedPublishersFile"
+              >
+              <button
+                type="button"
+                data-path-picker
+                data-path-target="trusted-publishers-file"
+                data-path-kind="file"
+                data-path-title="Choose trusted publishers JSON"
+                data-path-extensions="json"
+              >Browse…</button>
+            </div>
+          </label>
+          <label>Extension policy JSON
+            <div class="path-field">
+              <input id="extension-policy-file" name="extensionPolicyFile">
+              <button
+                type="button"
+                data-path-picker
+                data-path-target="extension-policy-file"
+                data-path-kind="file"
+                data-path-title="Choose extension policy JSON"
+                data-path-extensions="json"
+              >Browse…</button>
+            </div>
+          </label>
+          <div class="button-row full end">
+            <button id="connect-managed"
+              type="button">Save & pair connector</button>
+            <button type="submit" class="primary">Save configuration</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="panel-extensions" class="panel">
+        <div class="two-column">
+          <form id="publisher-form" class="card stack">
+            <div>
+              <span class="eyebrow">Publisher identity</span><h2>
+                Generate signing key
+              </h2>
+              <p>
+                The private key is generated locally and only downloaded to this
+                computer.
+              </p>
+            </div>
+            <label>Publisher<input
+                id="publisher-name"
+                required
+                maxlength="200"
+              ></label>
+            <label>Key ID<input
+                id="publisher-key-id"
+                required
+                maxlength="200"
+              ></label>
+            <button type="submit">
+              Generate private key and public trust entry
+            </button>
+          </form>
+          <form id="sign-form" class="card stack">
+            <div>
+              <span class="eyebrow">Immutable release</span><h2>
+                Sign package
+              </h2>
+              <p>
+                The digest is calculated from the package and signed locally.
+              </p>
+            </div>
+            <label>Package directory
+              <div class="path-field">
+                <input id="sign-directory" required>
+                <button
+                  type="button"
+                  data-path-picker
+                  data-path-target="sign-directory"
+                  data-path-kind="directory"
+                  data-path-title="Choose package directory to sign"
+                >Browse…</button>
+              </div>
+            </label>
+            <label>Private publisher JWK<input
+                id="sign-private-key"
+                type="file"
+                accept=".jwk, .json, application/json"
+                required
+              ></label>
+            <label>Key ID<input
+                id="sign-key-id"
+                required
+                maxlength="200"
+              ></label>
+            <button type="submit">Sign and download release JSON</button>
+          </form>
+        </div>
+        <div class="two-column">
+          <form id="install-form" class="card stack">
+            <div>
+              <span class="eyebrow">Local developer path</span><h2>
+                Install bundle
+              </h2>
+              <p>
+                Managed Store installations normally arrive through Desired
+                State. This form tests customer-authored bundles locally.
+              </p>
+            </div>
+            <label>Signed .fmx bundle<input
+                id="bundle-file"
+                type="file"
+                accept=".fmx, application/json"
+                required
+              ></label>
+            <label>Grant JSON<textarea
+                id="bundle-grant"
+                rows="7"
+                spellcheck="false"
+              >{"capabilities":[],"network":[],"secrets":[]}</textarea></label>
+            <label>Configuration JSON<textarea
+                id="bundle-configuration"
+                rows="7"
+                spellcheck="false"
+              >{}</textarea></label>
+            <label class="checkbox"><input
+                id="bundle-active"
+                type="checkbox"
+                checked
+              >Activate after install</label>
+            <button class="primary" type="submit">Install bundle</button>
+          </form>
+          <form id="pack-form" class="card stack">
+            <div>
+              <span class="eyebrow">Customer SDK path</span><h2>
+                Pack extension
+              </h2>
+              <p>
+                Build the same immutable Store artifact from a customer-authored
+                package directory and signed release descriptor.
+              </p>
+            </div>
+            <label>Package directory
+              <div class="path-field">
+                <input id="pack-directory" required>
+                <button
+                  type="button"
+                  data-path-picker
+                  data-path-target="pack-directory"
+                  data-path-kind="directory"
+                  data-path-title="Choose package directory to pack"
+                >Browse…</button>
+              </div>
+            </label>
+            <label>Signed release JSON<textarea
+                id="pack-release"
+                rows="10"
+                spellcheck="false"
+              >{
+  "extensionId": "example.extension",
+  "version": "1.0.0",
+  "digest": "sha256:...",
+  "publisher": "Example",
+  "publisherKeyId": "example-1",
+  "signature": "..."
+}</textarea></label>
+            <button type="submit">Pack and download .fmx</button>
+          </form>
+        </div>
+        <div class="card stack">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Observed locally</span><h2>
+                Installed extensions
+              </h2>
+            </div>
+            <button id="refresh-extensions">Refresh</button>
+          </div>
+          <div id="extensions-list" class="extension-list"></div>
+        </div>
+        <form id="action-form" class="card action-form hidden">
+          <div>
+            <span class="eyebrow">Direct local execution</span><h2
+              id="action-title"
+            >
+              Run action
+            </h2>
+          </div>
+          <input id="action-extension" type="hidden">
+          <label>Action name<input id="action-name" required></label>
+          <label>Input JSON<textarea
+              id="action-input"
+              rows="6"
+              spellcheck="false"
+            >{}</textarea></label>
+          <div class="button-row">
+            <button class="primary" type="submit">Execute</button>
+            <button id="cancel-action" type="button">Cancel</button>
+          </div>
+          <pre id="action-output" class="output"></pre>
+        </form>
+      </section>
+
+      <section id="panel-logs" class="panel">
+        <div class="card stack logs-card">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Runtime diagnostics</span><h2>Logs</h2>
+            </div>
+            <div class="button-row">
+              <button id="refresh-logs">Refresh</button>
+              <button id="clear-logs">Clear</button>
+            </div>
+          </div>
+          <div id="logs" class="logs" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+    <div id="toast" class="toast hidden" role="status"></div>
+  </body>
+</html>

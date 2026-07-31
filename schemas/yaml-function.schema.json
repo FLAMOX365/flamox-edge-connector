@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flamox365.com/edge-connector/schemas/yaml-function.schema.json",
+  "title": "Edge Connector YAML Function",
+  "description": "Schema für deklarative YAML Functions im Edge Connector",
+  "type": "object",
+  "required": ["target"],
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Ziel-URL für den Proxy. Unterstützt Template-Interpolation (z.B. {{ env.API_URL }})",
+      "examples": ["{{ env.API_URL }}", "http://internal-api:3000"]
+    },
+    "methods": {
+      "type": "array",
+      "description": "Erlaubte HTTP-Methoden. Standard: alle Methoden",
+      "items": {
+        "type": "string",
+        "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+      },
+      "uniqueItems": true,
+      "examples": [["GET", "POST"], ["GET"]]
+    },
+    "timeout": {
+      "type": "integer",
+      "description": "Timeout in Millisekunden. Standard: 30000",
+      "default": 30000,
+      "minimum": 1000,
+      "maximum": 300000
+    },
+    "request": {
+      "$ref": "#/$defs/requestTransform",
+      "description": "Request-Transformationen vor dem Proxy-Aufruf"
+    },
+    "response": {
+      "$ref": "#/$defs/responseTransform",
+      "description": "Response-Transformationen nach dem Proxy-Aufruf"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "headerTransform": {
+      "type": "object",
+      "description": "Header-Transformationen",
+      "properties": {
+        "add": {
+          "type": "object",
+          "description": "Header hinzufügen (zusätzlich zu bestehenden)",
+          "additionalProperties": { "type": "string" },
+          "examples": [{ "x-request-id": "{{ context.requestId }}" }]
+        },
+        "set": {
+          "type": "object",
+          "description": "Header setzen (überschreibt bestehende)",
+          "additionalProperties": { "type": "string" },
+          "examples": [{ "authorization": "Bearer {{ env.API_TOKEN }}" }]
+        },
+        "remove": {
+          "type": "array",
+          "description": "Header entfernen",
+          "items": { "type": "string" },
+          "examples": [["x-internal-debug", "x-forwarded-for"]]
+        }
+      },
+      "additionalProperties": false
+    },
+    "urlTransform": {
+      "type": "object",
+      "description": "URL-Transformationen",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "description": "Prefix zur URL hinzufügen",
+          "examples": ["/api/v2"]
+        },
+        "suffix": {
+          "type": "string",
+          "description": "Suffix zur URL hinzufügen",
+          "examples": ["?source=connector"]
+        },
+        "removePrefix": {
+          "type": "string",
+          "description": "Prefix von der URL entfernen",
+          "examples": ["/external"]
+        },
+        "rewrite": {
+          "type": "string",
+          "description": "URL komplett umschreiben (ersetzt den Pfad)",
+          "examples": ["/internal{{ request.url }}"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "rejectCondition": {
+      "type": "object",
+      "description": "Bedingung zum Ablehnen der Anfrage",
+      "properties": {
+        "if": {
+          "type": "string",
+          "description": "Bedingung (z.B. 'request.url contains \"/admin\"')",
+          "examples": [
+            "request.url contains \"/admin\"",
+            "request.method != \"GET\"",
+            "env.MAINTENANCE == \"true\""
+          ]
+        },
+        "code": {
+          "type": "string",
+          "description": "Fehlercode bei Ablehnung",
+          "default": "REQUEST_REJECTED"
+        },
+        "message": {
+          "type": "string",
+          "description": "Fehlermeldung bei Ablehnung",
+          "default": "Request rejected"
+        }
+      },
+      "additionalProperties": false
+    },
+    "requestTransform": {
+      "type": "object",
+      "description": "Request-Transformationen",
+      "properties": {
+        "headers": {
+          "$ref": "#/$defs/headerTransform"
+        },
+        "url": {
+          "$ref": "#/$defs/urlTransform"
+        },
+        "body": {
+          "type": "object",
+          "description": "Body-Transformationen",
+          "properties": {
+            "set": {
+              "type": "string",
+              "description": "Body komplett ersetzen",
+              "examples": [
+                "{\"wrapped\": true, \"original\": \"{{ request.body }}\"}"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "reject": {
+          "$ref": "#/$defs/rejectCondition"
+        }
+      },
+      "additionalProperties": false
+    },
+    "responseTransform": {
+      "type": "object",
+      "description": "Response-Transformationen",
+      "properties": {
+        "headers": {
+          "$ref": "#/$defs/headerTransform"
+        },
+        "body": {
+          "type": "object",
+          "description": "Body-Transformationen",
+          "properties": {
+            "set": {
+              "type": "string",
+              "description": "Body komplett ersetzen"
+            }
+          },
+          "additionalProperties": false
+        },
+        "statusCode": {
+          "type": "object",
+          "description": "Status-Code-Transformationen",
+          "properties": {
+            "set": {
+              "type": "integer",
+              "description": "Status-Code überschreiben",
+              "minimum": 100,
+              "maximum": 599
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

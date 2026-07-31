@@ -1,0 +1,39 @@
+# Ticketing Integration Deployment (YAML Functions)
+# ================================================
+#
+# Start: docker-compose up -d
+# Logs:    docker-compose logs -f
+# Stop:    docker-compose down
+
+services:
+  flamox-edge-connector:
+    image: ghcr.io/ruederennes/flamox-edge-connector:latest
+    container_name: ticketing-flamox-edge-connector
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # WebSocket URL for the FLAMOX365 Cloud
+      - EDGE_CONNECTOR_WS_URL=${FLAMOX_WS_URL}
+      - EDGE_CONNECTOR_HOST=${FLAMOX_HOST}
+      - EDGE_CONNECTOR_CLIENT_ID=${FLAMOX_CLIENT_ID}
+      - EDGE_CONNECTOR_CLIENT_SECRET=${FLAMOX_CLIENT_SECRET}
+      - EDGE_CONNECTOR_LOG_LEVEL=${FLAMOX_LOG_LEVEL:-info}
+
+      # Function mode: path to the functions directory
+      - EDGE_CONNECTOR_FUNCTIONS_DIR=/functions
+
+      # Ticketing API configuration (available to YAML functions)
+      - TICKET_API_URL=${TICKET_API_URL}
+      - TICKET_API_TOKEN=${TICKET_API_TOKEN}
+
+    volumes:
+      # Functions directory (YAML and/or TypeScript)
+      - ./functions:/functions:ro
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

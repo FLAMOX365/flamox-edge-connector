@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@edge-connector/sdk": "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/main/sdk/mod.ts"
+  }
+}

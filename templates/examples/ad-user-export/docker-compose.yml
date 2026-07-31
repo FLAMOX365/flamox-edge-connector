@@ -1,0 +1,84 @@
+# AD User Export Deployment
+# =========================
+#
+# Start: docker-compose up -d
+# Logs:    docker-compose logs -f
+# Stop:    docker-compose down
+
+services:
+  # ==========================================================================
+  # Edge Connector
+  # Connects to the FLAMOX365 Cloud and runs functions
+  # ==========================================================================
+  flamox-edge-connector:
+    image: ghcr.io/ruederennes/flamox-edge-connector:latest
+    container_name: ad-flamox-edge-connector
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # WebSocket URL for the FLAMOX365 Cloud
+      - EDGE_CONNECTOR_WS_URL=${FLAMOX_WS_URL}
+      - EDGE_CONNECTOR_HOST=${FLAMOX_HOST}
+      - EDGE_CONNECTOR_CLIENT_ID=${FLAMOX_CLIENT_ID}
+      - EDGE_CONNECTOR_CLIENT_SECRET=${FLAMOX_CLIENT_SECRET}
+      - EDGE_CONNECTOR_LOG_LEVEL=${FLAMOX_LOG_LEVEL:-info}
+
+      # Function mode: path to the functions directory
+      - EDGE_CONNECTOR_FUNCTIONS_DIR=/functions
+
+      # Bridge API configuration (available to the functions)
+      - AD_BRIDGE_URL=http://ad-bridge:5000
+      - AD_BRIDGE_TOKEN=${BRIDGE_API_TOKEN}
+
+    volumes:
+      - ./functions:/functions:ro
+
+    depends_on:
+      ad-bridge:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ==========================================================================
+  # AD Bridge API
+  # REST API that runs LDAP queries against Active Directory
+  # ==========================================================================
+  ad-bridge:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    container_name: ad-bridge-api
+    restart: unless-stopped
+    # Port is reachable internally only (not exposed externally)
+    expose:
+      - "5000"
+    environment:
+      # Active Directory connection
+      - AD_SERVER=${AD_SERVER}
+      - AD_BASE_DN=${AD_BASE_DN}
+      - AD_BIND_USER=${AD_BIND_USER}
+      - AD_BIND_PASSWORD=${AD_BIND_PASSWORD}
+
+      # API authentication
+      - BRIDGE_API_TOKEN=${BRIDGE_API_TOKEN}
+
+      # Optional: TLS for LDAP
+      - AD_USE_TLS=${AD_USE_TLS:-false}
+      - AD_CERT_FILE=${AD_CERT_FILE:-}
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    name: ad-connector-network

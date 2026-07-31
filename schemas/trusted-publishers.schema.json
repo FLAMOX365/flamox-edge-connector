@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.flamox.com/edge-connector/trusted-publishers.schema.json",
+  "title": "Trusted edge extension publishers",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "publishers"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "publishers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["keyId", "publisher", "publicKey"],
+        "properties": {
+          "keyId": { "type": "string", "minLength": 1 },
+          "publisher": { "type": "string", "minLength": 1 },
+          "publicKey": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["kty", "crv", "x"],
+            "properties": {
+              "kty": { "const": "OKP" },
+              "crv": { "const": "Ed25519" },
+              "x": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

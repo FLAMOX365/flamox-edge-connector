@@ -1,0 +1,167 @@
+openapi: 3.0.2
+info:
+  title: Edge Connector Protocol
+  version: 1.0.0
+servers:
+  - url: /flamox-edge-connector
+paths:
+  /messages:
+    x-ignore: true
+    get:
+      summary: Dummy endpoint to reference all protocol schemas.
+      responses:
+        200:
+          description: Protocol schemas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeConnectorMessageFrame"
+components:
+  schemas:
+    EdgeConnectorHttpMethod:
+      type: string
+      enum:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - HEAD
+        - OPTIONS
+    EdgeConnectorHttpRequest:
+      type: object
+      properties:
+        method:
+          $ref: "#/components/schemas/EdgeConnectorHttpMethod"
+        url:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          default: {}
+        body:
+          type: string
+          nullable: true
+        timeoutSeconds:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 120
+          default: 60
+      required:
+        - method
+        - url
+    EdgeConnectorHttpResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          format: int32
+          minimum: 100
+          maximum: 599
+        headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          default: {}
+        body:
+          type: string
+          nullable: true
+      required:
+        - statusCode
+    EdgeConnectorError:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - message
+    EdgeConnectorRequestFrameType:
+      type: string
+      enum:
+        - request
+    EdgeConnectorResponseFrameType:
+      type: string
+      enum:
+        - response
+    EdgeConnectorHeartbeatFrameType:
+      type: string
+      enum:
+        - heartbeat
+    EdgeConnectorFrame:
+      type: object
+      properties:
+        type:
+          type: string
+      required:
+        - type
+      discriminator:
+        propertyName: type
+        mapping:
+          request: "#/components/schemas/EdgeConnectorRequestFrame"
+          response: "#/components/schemas/EdgeConnectorResponseFrame"
+          heartbeat: "#/components/schemas/EdgeConnectorHeartbeatFrame"
+    EdgeConnectorMessageFrame:
+      oneOf:
+        - $ref: "#/components/schemas/EdgeConnectorRequestFrame"
+        - $ref: "#/components/schemas/EdgeConnectorResponseFrame"
+        - $ref: "#/components/schemas/EdgeConnectorHeartbeatFrame"
+      discriminator:
+        propertyName: type
+        mapping:
+          request: "#/components/schemas/EdgeConnectorRequestFrame"
+          response: "#/components/schemas/EdgeConnectorResponseFrame"
+          heartbeat: "#/components/schemas/EdgeConnectorHeartbeatFrame"
+    EdgeConnectorRequestFrame:
+      allOf:
+        - $ref: "#/components/schemas/EdgeConnectorFrame"
+        - type: object
+          properties:
+            type:
+              $ref: "#/components/schemas/EdgeConnectorRequestFrameType"
+            requestId:
+              type: string
+              format: uuid
+            request:
+              $ref: "#/components/schemas/EdgeConnectorHttpRequest"
+          required:
+            - type
+            - requestId
+            - request
+    EdgeConnectorResponseFrame:
+      allOf:
+        - $ref: "#/components/schemas/EdgeConnectorFrame"
+        - type: object
+          properties:
+            type:
+              $ref: "#/components/schemas/EdgeConnectorResponseFrameType"
+            requestId:
+              type: string
+              format: uuid
+            response:
+              $ref: "#/components/schemas/EdgeConnectorHttpResponse"
+            error:
+              $ref: "#/components/schemas/EdgeConnectorError"
+          required:
+            - type
+            - requestId
+    EdgeConnectorHeartbeatFrame:
+      allOf:
+        - $ref: "#/components/schemas/EdgeConnectorFrame"
+        - type: object
+          properties:
+            type:
+              $ref: "#/components/schemas/EdgeConnectorHeartbeatFrameType"
+            sentAt:
+              type: string
+              format: date-time
+          required:
+            - type

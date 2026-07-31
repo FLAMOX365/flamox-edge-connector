@@ -1,0 +1,49 @@
+{
+  "$schema": "../../schemas/extension-manifest.schema.json",
+  "schemaVersion": 2,
+  "id": "customer.example",
+  "displayName": "Customer Example",
+  "description": "Starter package for a customer-authored Edge extension.",
+  "publisher": "Customer GmbH",
+  "version": "1.0.0",
+  "runtime": {
+    "kind": "deno-worker",
+    "entrypoint": "main.ts"
+  },
+  "capabilities": ["customer.example.read"],
+  "permissions": {
+    "network": [],
+    "configuredNetwork": [
+      {
+        "configurationPointer": "/targetHost",
+        "allowedPorts": [443]
+      }
+    ],
+    "secrets": ["API_TOKEN"]
+  },
+  "actions": [
+    {
+      "name": "health",
+      "description": "Checks whether configuration and secrets are available.",
+      "idempotent": true,
+      "timeoutSeconds": 10
+    },
+    {
+      "name": "read",
+      "description": "Runs the example customer operation.",
+      "idempotent": true,
+      "timeoutSeconds": 30
+    }
+  ],
+  "contributions": [],
+  "configurationSchema": "configuration.schema.json",
+  "configurationUiSchema": "configuration.ui.json",
+  "translations": {
+    "de": "translations/de.json",
+    "en": "translations/en.json"
+  },
+  "health": {
+    "action": "health",
+    "timeoutSeconds": 10
+  }
+}
