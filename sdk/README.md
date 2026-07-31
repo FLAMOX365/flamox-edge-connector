@@ -5,7 +5,7 @@ Minimal authoring contract for isolated Edge Connector extensions.
 ```json
 {
   "imports": {
-    "@edge-connector/sdk": "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/main/sdk/mod.ts"
+    "@edge-connector/sdk": "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/8140bcd622e7c3af9ac9d9af7fd7650b6f5310e7/sdk/mod.ts"
   }
 }
 ```

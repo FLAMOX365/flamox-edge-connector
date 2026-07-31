@@ -10,6 +10,8 @@ WORKDIR /app
 # Copy source files
 COPY deno.json .
 COPY deno.lock .
+COPY cli/deno.json ./cli/deno.json
+COPY desktop/deno.json ./desktop/deno.json
 COPY runtime/ ./runtime/
 COPY sdk/ ./sdk/
 

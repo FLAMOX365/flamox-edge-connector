@@ -1,6 +1,10 @@
 **
 !deno.json
 !deno.lock
+!cli/
+!cli/deno.json
+!desktop/
+!desktop/deno.json
 !runtime/
 !runtime/**
 !sdk/
