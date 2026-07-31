@@ -1,15 +1,15 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@std/assert@1": "1.0.19",
-    "jsr:@std/fs@1": "1.0.24",
+    "jsr:@std/assert@1.0.19": "1.0.19",
+    "jsr:@std/fs@1.0.24": "1.0.24",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
-    "jsr:@std/path@1": "1.1.6",
+    "jsr:@std/path@1.1.6": "1.1.6",
     "jsr:@std/path@^1.1.5": "1.1.6",
-    "jsr:@std/yaml@1": "1.1.2",
+    "jsr:@std/yaml@1.1.2": "1.1.2",
     "npm:@goast/core@0.5.3": "0.5.3",
-    "npm:@goast/typescript@0.6.2": "0.6.2",
+    "npm:@goast/typescript@0.7.6": "0.7.6",
     "npm:ajv@8.20.0": "8.20.0"
   },
   "jsr": {
@@ -40,15 +40,6 @@
     }
   },
   "npm": {
-    "@goast/core@0.5.0": {
-      "integrity": "sha512-DHx1/+RTaZpZpakABhtQYVra3REHQaNUGp33T4go+lR4pZbFxbJz9S0NEAnIdC+zIpu7lea07qNUUEU8UX5lkA==",
-      "dependencies": [
-        "fs-extra",
-        "tslib",
-        "undici",
-        "yaml"
-      ]
-    },
     "@goast/core@0.5.3": {
       "integrity": "sha512-w13jOS9AkoXMhRLANweojNn8vaz/RABDHSyKVcq1+y13mqGAIj3gCxrYtpCJoEbTmHXD5nsZsYHBHI6u5yF9rQ==",
       "dependencies": [
@@ -58,10 +49,10 @@
         "yaml"
       ]
     },
-    "@goast/typescript@0.6.2": {
-      "integrity": "sha512-kYioOiI8HUem6Ky+e68LfG2HEMqQhH1vWJzUY2nuaZCM8emi3cIUQB+F+gMWbVuO0p62XTZUIiuwbfp99u1Ptw==",
+    "@goast/typescript@0.7.6": {
+      "integrity": "sha512-X1+es/pwBSbGHID4MVEWl7aFbK/QrrTwi/dNqdBTfz8R8Dm9fKwZovWnpsxhyJkaPB8DPLWTqOTzNCMBC1Nnrg==",
       "dependencies": [
-        "@goast/core@0.5.0",
+        "@goast/core",
         "fs-extra",
         "tslib"
       ]
@@ -125,32 +116,32 @@
     "members": {
       "cli": {
         "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/fs@1",
-          "jsr:@std/path@1",
+          "jsr:@std/assert@1.0.19",
+          "jsr:@std/fs@1.0.24",
+          "jsr:@std/path@1.1.6",
           "npm:ajv@8.20.0"
         ]
       },
       "desktop": {
         "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/path@1"
+          "jsr:@std/assert@1.0.19",
+          "jsr:@std/path@1.1.6"
         ]
       },
       "runtime": {
         "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/fs@1",
-          "jsr:@std/path@1",
-          "jsr:@std/yaml@1",
+          "jsr:@std/assert@1.0.19",
+          "jsr:@std/fs@1.0.24",
+          "jsr:@std/path@1.1.6",
+          "jsr:@std/yaml@1.1.2",
           "npm:@goast/core@0.5.3",
-          "npm:@goast/typescript@0.6.2",
+          "npm:@goast/typescript@0.7.6",
           "npm:ajv@8.20.0"
         ]
       },
       "sdk": {
         "dependencies": [
-          "jsr:@std/assert@1"
+          "jsr:@std/assert@1.0.19"
         ]
       }
     }
