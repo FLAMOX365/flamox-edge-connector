@@ -24,7 +24,16 @@ const projectIdentifierPattern = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/u;
 const extensionSdkSource =
   "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/8140bcd622e7c3af9ac9d9af7fd7650b6f5310e7/sdk/mod.ts";
 const maximumJsonSchemaBytes = 256 * 1024;
+const maximumStoreImageBytes = 2 * 1024 * 1024;
 const bundledEntrypoint = "runtime/extension.js";
+const storeImageMediaTypes: ReadonlyMap<string, string> = new Map(
+  [
+    ["store-image.jpeg", "image/jpeg"],
+    ["store-image.jpg", "image/jpeg"],
+    ["store-image.png", "image/png"],
+    ["store-image.webp", "image/webp"],
+  ] as const,
+);
 
 export type CreateProjectOptions = {
   readonly id: string;
@@ -136,6 +145,7 @@ export async function validateProject(
     if (schemaPath) await validateJsonSchema(root, schemaPath);
   }
   await validateProjectTree(root);
+  await validateStoreImage(root);
   const prepared = await prepareBundledRuntime(root, manifest);
   try {
     const host = developmentHost(prepared.directory, prepared.manifest);
@@ -148,6 +158,49 @@ export async function validateProject(
     await Deno.remove(prepared.directory, { recursive: true });
   }
   return manifest;
+}
+
+async function validateStoreImage(root: string): Promise<void> {
+  const candidates = [...Deno.readDirSync(root)]
+    .filter((entry) => entry.isFile && entry.name.startsWith("store-image."))
+    .map((entry) => entry.name)
+    .sort();
+  if (candidates.length === 0) return;
+  if (candidates.length > 1) {
+    throw new Error("Extension projects may contain only one Store image.");
+  }
+  const name = candidates[0]!;
+  const mediaType = storeImageMediaTypes.get(name);
+  if (!mediaType) {
+    throw new Error(
+      "Store images must be named store-image.png, store-image.jpg, store-image.jpeg or store-image.webp.",
+    );
+  }
+  const path = join(root, name);
+  const info = await Deno.stat(path);
+  if (!info.isFile || info.size === 0 || info.size > maximumStoreImageBytes) {
+    throw new Error("The Store image is empty or exceeds 2 MiB.");
+  }
+  const bytes = await Deno.readFile(path);
+  if (!matchesStoreImageType(bytes, mediaType)) {
+    throw new Error(`The Store image '${name}' does not match its file type.`);
+  }
+}
+
+function matchesStoreImageType(bytes: Uint8Array, mediaType: string): boolean {
+  if (mediaType === "image/png") {
+    return bytes.length >= 8 &&
+      [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+        (value, index) => bytes[index] === value,
+      );
+  }
+  if (mediaType === "image/jpeg") {
+    return bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+      bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9;
+  }
+  return bytes.length >= 12 &&
+    new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" &&
+    new TextDecoder().decode(bytes.subarray(8, 12)) === "WEBP";
 }
 
 async function validateJsonSchema(
