@@ -21,6 +21,15 @@ Deno.test("scaffolded Hello World extension validates, tests, packages and execu
     });
     const manifest = await validateProject(project);
     assertEquals(manifest.capabilities, ["host.ui.message-box"]);
+    await Deno.writeFile(
+      `${project}/store-image.png`,
+      Uint8Array.from(
+        atob(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        ),
+        (character) => character.charCodeAt(0),
+      ),
+    );
     await testProject(project);
 
     const calls: unknown[] = [];
@@ -66,12 +75,44 @@ Deno.test("scaffolded Hello World extension validates, tests, packages and execu
       false,
     );
     assertEquals(
+      packaged.bundle.files.some((file) => file.path === "store-image.png"),
+      true,
+    );
+    assertEquals(
       packaged.bundle.files.some((file) =>
         file.path === "grant.dev.json" ||
         file.path.startsWith("examples/") ||
         /\.(?:jwk|pem|key)$/u.test(file.path)
       ),
       false,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("project validation rejects ambiguous or invalid Store images", async () => {
+  const root = await Deno.makeTempDir();
+  const project = `${root}/store-image`;
+  try {
+    await createProject({
+      id: "store-image",
+      directory: project,
+      displayName: "Store image",
+      publisher: "FLAMOX365",
+      sdkSource: new URL("../sdk/mod.ts", import.meta.url).href,
+    });
+    await Deno.writeTextFile(`${project}/store-image.png`, "not a PNG");
+    await assertRejects(
+      () => validateProject(project),
+      Error,
+      "does not match its file type",
+    );
+    await Deno.writeTextFile(`${project}/store-image.webp`, "not a WebP");
+    await assertRejects(
+      () => validateProject(project),
+      Error,
+      "only one Store image",
     );
   } finally {
     await Deno.remove(root, { recursive: true });

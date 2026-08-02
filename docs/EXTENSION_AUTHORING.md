@@ -98,6 +98,12 @@ development and packaging. `extension build` bundles the complete graph into a
 single local worker module, so installed extensions never fetch executable code
 from the internet.
 
+An extension may place exactly one Store-card image at its project root. Name it
+`store-image.png`, `store-image.jpg`, `store-image.jpeg` or `store-image.webp`
+and keep it at or below 2 MiB. Validation checks that the file matches its
+declared type, and `extension build` copies it into the package so its bytes are
+covered by the FMX signature. Store images remain optional.
+
 ## Development, test and bundle
 
 ```bash
