@@ -1,8 +1,8 @@
-export type EdgeConnectorHeartbeatFrameType = "heartbeat";
+// Generated from OpenAPI schemas. Do not edit manually.
 
-/**
- * All possible values of the enum `EdgeConnectorHeartbeatFrameType`.
- */
 export const EDGE_CONNECTOR_HEARTBEAT_FRAME_TYPE_VALUES = [
   "heartbeat",
 ] as const;
+
+export type EdgeConnectorHeartbeatFrameType =
+  (typeof EDGE_CONNECTOR_HEARTBEAT_FRAME_TYPE_VALUES)[number];

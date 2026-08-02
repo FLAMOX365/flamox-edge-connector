@@ -1,6 +1,8 @@
-export type EdgeConnectorRequestFrameType = "request";
+// Generated from OpenAPI schemas. Do not edit manually.
 
-/**
- * All possible values of the enum `EdgeConnectorRequestFrameType`.
- */
-export const EDGE_CONNECTOR_REQUEST_FRAME_TYPE_VALUES = ["request"] as const;
+export const EDGE_CONNECTOR_REQUEST_FRAME_TYPE_VALUES = [
+  "request",
+] as const;
+
+export type EdgeConnectorRequestFrameType =
+  (typeof EDGE_CONNECTOR_REQUEST_FRAME_TYPE_VALUES)[number];
