@@ -1,13 +1,13 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@std/assert@1": "1.0.19",
-    "jsr:@std/fs@1": "1.0.24",
+    "jsr:@std/assert@1.0.19": "1.0.19",
+    "jsr:@std/fs@1.0.24": "1.0.24",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
-    "jsr:@std/path@1": "1.1.6",
+    "jsr:@std/path@1.1.6": "1.1.6",
     "jsr:@std/path@^1.1.5": "1.1.6",
-    "jsr:@std/yaml@1": "1.1.2",
+    "jsr:@std/yaml@1.1.2": "1.1.2",
     "npm:ajv@8.20.0": "8.20.0"
   },
   "jsr": {
@@ -64,30 +64,30 @@
     "members": {
       "cli": {
         "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/fs@1",
-          "jsr:@std/path@1",
+          "jsr:@std/assert@1.0.19",
+          "jsr:@std/fs@1.0.24",
+          "jsr:@std/path@1.1.6",
           "npm:ajv@8.20.0"
         ]
       },
       "desktop": {
         "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/path@1"
+          "jsr:@std/assert@1.0.19",
+          "jsr:@std/path@1.1.6"
         ]
       },
       "runtime": {
         "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/fs@1",
-          "jsr:@std/path@1",
-          "jsr:@std/yaml@1",
+          "jsr:@std/assert@1.0.19",
+          "jsr:@std/fs@1.0.24",
+          "jsr:@std/path@1.1.6",
+          "jsr:@std/yaml@1.1.2",
           "npm:ajv@8.20.0"
         ]
       },
       "sdk": {
         "dependencies": [
-          "jsr:@std/assert@1"
+          "jsr:@std/assert@1.0.19"
         ]
       }
     }
