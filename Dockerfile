@@ -1,4 +1,4 @@
-FROM denoland/deno:2.9.4@sha256:c777b4b225501a61074837e90a826a58f99124837824023cd60334b1e2374498
+FROM denoland/deno:2.9.6@sha256:2014dc167ece617ef7e7ba40631ac2234c59e75ce693e7cc2dc2602b3c87859d
 
 LABEL org.opencontainers.image.source="https://github.com/FLAMOX365/flamox-edge-connector" \
       org.opencontainers.image.description="Edge Connector runtime" \
