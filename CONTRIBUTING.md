@@ -15,11 +15,16 @@ Run the complete local gate before opening a pull request:
 ```bash
 yarn check
 yarn lint
-yarn test
+yarn test:coverage
+yarn test:native
+yarn check:templates
 yarn fmt
 yarn audit
 yarn verify:generated
 ```
+
+See [regression verification](docs/TESTING.md) for the behavior matrix, native
+prerequisites, expected negative-test output and device/platform qualification.
 
 Changes to `openapi/api.yml` require `yarn generate:api`. Never hand-edit
 `runtime/generated/`.

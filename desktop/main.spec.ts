@@ -154,6 +154,7 @@ test("compiled desktop backend persists isolated settings, pushes changes and tr
   >();
   let sequence = 0,
     invalidations = 0;
+  let displayDialog = true;
   const dialogs: unknown[] = [];
   const lines = createInterface({ input: child.stdout });
   lines.on("line", (line) => {
@@ -171,7 +172,7 @@ test("compiled desktop backend persists isolated settings, pushes changes and tr
     if (message.type === "ui-request") {
       dialogs.push(message.request);
       child.stdin.write(
-        `${JSON.stringify({ type: "ui-result", id: message.id, displayed: true })}\n`,
+        `${JSON.stringify({ type: "ui-result", id: message.id, displayed: displayDialog })}\n`,
       );
       return;
     }
@@ -241,6 +242,26 @@ test("compiled desktop backend persists isolated settings, pushes changes and tr
       { displayed: true },
     );
     assertEquals(dialogs, [message]);
+    displayDialog = false;
+    await assertRejects(
+      () =>
+        request("executeAction", {
+          extensionId: "test.desktop-ipc",
+          action: "show",
+          input: message,
+        }),
+      Error,
+      "Extension action failed",
+    );
+    displayDialog = true;
+    assertEquals(
+      await request("executeAction", {
+        extensionId: "test.desktop-ipc",
+        action: "show",
+        input: message,
+      }),
+      { displayed: true },
+    );
     await request("stopConnector");
     child.stdin.end();
     assertEquals((await closed)[0], 0);
@@ -251,4 +272,115 @@ test("compiled desktop backend persists isolated settings, pushes changes and tr
     await new Promise<void>((resolve) => cloud.close(() => resolve()));
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+for (const frame of [
+  "{",
+  "null",
+  "[]",
+  JSON.stringify({ type: "request", id: "1", method: "getState", args: {} }),
+  JSON.stringify({
+    type: "request",
+    id: "1",
+    method: "getState",
+    args: [1, 2, 3, 4, 5],
+  }),
+]) {
+  test(`compiled desktop backend closes malformed IPC without persisting settings: ${frame}`, {
+    timeout: 5_000,
+  }, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "edge-ipc-invalid-"));
+    const path = join(directory, "settings.json");
+    const settings = {
+      ...defaultSettings(),
+      dataDirectory: join(directory, "data"),
+      functionsDirectory: join(directory, "functions"),
+    };
+    await writeFile(path, JSON.stringify(settings));
+    const before = await readFile(path);
+    const child = spawn(
+      process.execPath,
+      [
+        fileURLToPath(new URL("../dist/desktop/main.js", import.meta.url)),
+        "--settings",
+        path,
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    child.stdout.resume();
+    child.stderr.resume();
+    t.after(async () => {
+      child.kill();
+      await rm(directory, { recursive: true, force: true });
+    });
+    const closed = once(child, "exit");
+    child.stdin.write(`${frame}\n`);
+    assertEquals((await closed)[0], 0);
+    assertEquals(await readFile(path), before);
+  });
+}
+
+test("compiled desktop backend serializes mutations and rejects invalid settings without changing disk", {
+  timeout: 5_000,
+}, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "edge-ipc-queue-"));
+  const path = join(directory, "settings.json");
+  const settings = {
+    ...defaultSettings(),
+    dataDirectory: join(directory, "data"),
+    functionsDirectory: join(directory, "functions"),
+  };
+  await writeFile(path, JSON.stringify(settings));
+  const child = spawn(
+    process.execPath,
+    [
+      fileURLToPath(new URL("../dist/desktop/main.js", import.meta.url)),
+      "--settings",
+      path,
+    ],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  child.stderr.resume();
+  const closed = once(child, "exit");
+  const lines = createInterface({ input: child.stdout });
+  const responses: {
+    id: string;
+    result?: { settings: typeof settings };
+    error?: string;
+  }[] = [];
+  let completed!: () => void;
+  const complete = new Promise<void>((resolve) => {
+    completed = resolve;
+  });
+  lines.on("line", (line) => {
+    const value = JSON.parse(line);
+    if (value.type === "response") {
+      responses.push(value);
+      if (responses.length === 4) completed();
+    }
+  });
+  t.after(async () => {
+    child.kill();
+    lines.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  for (const [id, method, args] of [
+    ["one", "saveSettings", [{ ...settings, displayName: "First" }]],
+    ["two", "saveSettings", [{ ...settings, displayName: "Second" }]],
+    ["invalid", "saveSettings", [{ ...settings, bindPort: "invalid" }]],
+    ["read", "getState", []],
+  ])
+    child.stdin.write(
+      `${JSON.stringify({ type: "request", id, method, args })}\n`,
+    );
+  await complete;
+  assertEquals(
+    responses.map((response) => response.id),
+    ["one", "two", "invalid", "read"],
+  );
+  assert(typeof responses[2]!.error === "string");
+  assertEquals(responses[3]!.result!.settings.displayName, "Second");
+  assertEquals(JSON.parse(await readFile(path, "utf8")).displayName, "Second");
+  child.stdin.end();
+  assertEquals((await closed)[0], 0);
 });

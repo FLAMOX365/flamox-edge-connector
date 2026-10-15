@@ -264,6 +264,9 @@ export async function testProject(directory: string): Promise<void> {
   }
   testFiles.sort();
   await typecheckProject(directory);
+  // The CLI starts an independent test runner, including when invoked by host tests.
+  const environment = { ...process.env };
+  delete environment.NODE_TEST_CONTEXT;
   const status = await executeCommand(
     process.execPath,
     [
@@ -272,7 +275,7 @@ export async function testProject(directory: string): Promise<void> {
       "--test",
       ...testFiles,
     ],
-    { cwd: directory, inherit: true },
+    { cwd: directory, inherit: true, env: environment },
   );
   if (!status.success) {
     throw new Error(`Extension tests failed with exit code ${status.code}.`);

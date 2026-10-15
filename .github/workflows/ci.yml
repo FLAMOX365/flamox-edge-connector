@@ -44,14 +44,18 @@ jobs:
       - run: yarn fmt
       - run: yarn lint
       - run: yarn check
-      - run: yarn test
+      - run: yarn test:coverage
       - run: yarn check:templates
-      - run: yarn audit
       - run: yarn verify:generated
-      - name: Compile native desktop host without publishing
+      - name: Test native desktop protocol and lifecycle
         run: |
           rustup toolchain install 1.99.0 --profile minimal
-          yarn desktop:build --no-bundle
+          yarn test:native
+      - name: Compile native desktop host without publishing
+        run: yarn desktop:build --no-bundle
       - name: Build container
         if: runner.os == 'Linux'
         run: docker build --tag edge-connector:verify .
+      - name: Audit runtime dependencies
+        if: always()
+        run: yarn audit

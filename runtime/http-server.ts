@@ -40,13 +40,16 @@ export async function serveHttp(
   });
   // A close can happen while supervision is entering its next await.
   void finished.catch(() => undefined);
-  const shutdown = async () => {
-    for (const socket of sockets.clients) socket.terminate();
-    sockets.close();
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+  const port = (server.address() as AddressInfo).port;
+  let stopping: Promise<void> | undefined;
+  const shutdown = () => {
+    stopping ??= new Promise<void>((resolve, reject) => {
+      for (const socket of sockets.clients) socket.terminate();
+      sockets.close();
+      server.closeAllConnections();
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    return stopping;
   };
   const abort = () => {
     void shutdown().catch(() => undefined);
@@ -56,5 +59,5 @@ export async function serveHttp(
     .finally(() => options.signal.removeEventListener("abort", abort))
     .catch(() => undefined);
   if (options.signal.aborted) abort();
-  return { finished, port: (server.address() as AddressInfo).port, shutdown };
+  return { finished, port, shutdown };
 }

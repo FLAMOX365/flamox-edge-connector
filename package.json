@@ -19,6 +19,8 @@
     "build": "yarn workspace @edge-connector/sdk build && tsc -p tsconfig.build.json && node tools/build-worker.ts",
     "check": "tsc --noEmit",
     "test": "yarn build && node --import tsx --test sdk/*.spec.ts runtime/*.spec.ts desktop/*.spec.ts cli/*.spec.ts",
+    "test:coverage": "yarn build && node --import tsx --test --experimental-test-coverage --test-coverage-include='runtime/**/*.ts' --test-coverage-include='sdk/**/*.ts' --test-coverage-include='cli/**/*.ts' --test-coverage-include='desktop/*.ts' --test-coverage-exclude='**/*.spec.ts' --test-coverage-exclude='**/*.d.ts' --test-coverage-exclude='runtime/generated/**' --test-coverage-include-all sdk/*.spec.ts runtime/*.spec.ts desktop/*.spec.ts cli/*.spec.ts",
+    "test:native": "yarn build && node tools/prepare-desktop.ts && cd desktop/src-tauri && cargo test --lib",
     "start": "node dist/runtime/main.js",
     "dev": "node --import tsx --watch runtime/main.ts",
     "extension": "node --import tsx cli/main.ts",

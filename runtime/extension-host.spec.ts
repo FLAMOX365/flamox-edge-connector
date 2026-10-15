@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import { assertEquals, assertRejects } from "../test/assert.ts";
 import type { JsonValue } from "@edge-connector/sdk/extension";
 import { parseExtensionManifest } from "./extension-manifest.ts";
-import { ExtensionHost } from "./extension-host.ts";
+import { ExtensionHost, type ExtensionHostOptions } from "./extension-host.ts";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createServer as createTcpServer } from "node:net";
@@ -275,6 +275,7 @@ async function isolationHost(
   source: string,
   network: string[] = [],
   secrets: string[] = [],
+  options: Partial<ExtensionHostOptions> = {},
 ): Promise<ExtensionHost> {
   await fs.writeFile(`${directory}/extension.mjs`, source);
   const manifest = parseExtensionManifest({
@@ -300,6 +301,7 @@ async function isolationHost(
           Object.fromEntries(secrets.map((name) => [name, "scoped-only"])),
         ),
     },
+    ...options,
   });
 }
 
@@ -360,4 +362,512 @@ test("ExtensionHost brokers only declared host capabilities", async () => {
     host.stop();
     await fs.rm(directory, { recursive: true });
   }
+});
+
+for (const actions of [
+  "{ missing: () => null }",
+  "{ inspect: () => null, hidden: () => null }",
+]) {
+  test(`ExtensionHost rejects an entrypoint with a different signed action set: ${actions}`, async (t) => {
+    const directory = await makeTempDirectory();
+    const host = await isolationHost(
+      directory,
+      `export default { actions: ${actions} };`,
+    );
+    t.after(async () => {
+      host.stop();
+      await fs.rm(directory, { recursive: true, force: true });
+    });
+    await assertRejects(() => host.start(), Error, "initialization failed");
+  });
+}
+
+for (const value of [
+  "undefined",
+  "NaN",
+  "1n",
+  "(() => { const value = {}; value.self = value; return value; })()",
+]) {
+  test(`ExtensionHost rejects non-JSON results and keeps the next execution usable: ${value}`, async (t) => {
+    const directory = await makeTempDirectory();
+    const host = await isolationHost(
+      directory,
+      `export default { actions: { inspect: (_context, input) => input ? ${value} : { healthy: true } } };`,
+    );
+    t.after(async () => {
+      host.stop();
+      await fs.rm(directory, { recursive: true, force: true });
+    });
+    await assertRejects(
+      () => host.execute("invalid", "inspect", true),
+      Error,
+      "Extension action failed",
+    );
+    assertEquals(await host.execute("next", "inspect", false), {
+      healthy: true,
+    });
+  });
+}
+
+for (const denied of ["manifest", "grant", "provider"] as const) {
+  test(`ExtensionHost denies host UI authority missing from the ${denied} without invoking the provider`, async (t) => {
+    const directory = await makeTempDirectory();
+    let invocations = 0;
+    const base = await isolationHost(
+      directory,
+      'export default { actions: { inspect: context => context.host.ui.showMessage({ title: "Test", message: "Test" }) } };',
+    );
+    const capability = "host.ui.message-box";
+    const host = await isolationHost(
+      directory,
+      await fs.readFile(`${directory}/extension.mjs`, "utf8"),
+      [],
+      [],
+      {
+        manifest: {
+          ...base.manifest,
+          capabilities: denied === "manifest" ? [] : [capability],
+        },
+        grant: {
+          capabilities: denied === "grant" ? [] : [capability],
+          network: [],
+          secrets: [],
+        },
+        ...(denied === "provider"
+          ? {}
+          : {
+              hostCapabilities: {
+                invoke: async () => {
+                  invocations++;
+                  return { displayed: true };
+                },
+              },
+            }),
+      },
+    );
+    t.after(async () => {
+      host.stop();
+      await fs.rm(directory, { recursive: true, force: true });
+    });
+    await assertRejects(
+      () => host.execute("denied", "inspect", null),
+      Error,
+      "Extension action failed",
+    );
+    assertEquals(invocations, 0);
+  });
+}
+
+test("ExtensionHost validates signed input before resolving secrets or executing host side effects", async (t) => {
+  const directory = await makeTempDirectory();
+  let secretsResolved = 0,
+    hostCalls = 0;
+  const base = await isolationHost(
+    directory,
+    'export default { actions: { inspect: context => context.host.ui.showMessage({ title: "Test", message: "Test" }) } };',
+  );
+  await fs.writeFile(
+    `${directory}/input.json`,
+    JSON.stringify({
+      type: "object",
+      required: ["count"],
+      additionalProperties: false,
+      properties: { count: { type: "integer", minimum: 1, maximum: 3 } },
+    }),
+  );
+  const host = await isolationHost(
+    directory,
+    await fs.readFile(`${directory}/extension.mjs`, "utf8"),
+    [],
+    [],
+    {
+      manifest: {
+        ...base.manifest,
+        capabilities: ["host.ui.message-box"],
+        actions: [{ ...base.manifest.actions[0]!, inputSchema: "input.json" }],
+      },
+      grant: {
+        capabilities: ["host.ui.message-box"],
+        network: [],
+        secrets: [],
+      },
+      secrets: {
+        resolve: async () => {
+          secretsResolved++;
+          return {};
+        },
+      },
+      hostCapabilities: {
+        invoke: async () => {
+          hostCalls++;
+          return { displayed: true };
+        },
+      },
+    },
+  );
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  const invalidInputs: JsonValue[] = [
+    { count: "1" },
+    { count: 0 },
+    { count: 4 },
+    { count: 1, extra: true },
+  ];
+  for (const input of invalidInputs) {
+    await assertRejects(
+      () => host.execute("invalid", "inspect", input),
+      Error,
+      "input violates its contract",
+    );
+  }
+  assertEquals([secretsResolved, hostCalls], [0, 0]);
+  assertEquals(await host.execute("valid", "inspect", { count: 1 }), {
+    displayed: true,
+  });
+  assertEquals([secretsResolved, hostCalls], [1, 1]);
+});
+
+test("ExtensionHost filters an overbroad secret provider and keeps simultaneous contexts separate", async (t) => {
+  const directory = await makeTempDirectory();
+  const host = await isolationHost(
+    directory,
+    "export default { actions: { inspect: async (context, input) => { await new Promise(resolve => setTimeout(resolve, input)); return { id: context.requestId, secrets: context.secrets }; } } };",
+    [],
+    ["ALLOWED"],
+    {
+      secrets: {
+        resolve: async () => ({
+          ALLOWED: "scoped-only",
+          OTHER_EXTENSION: "must-not-leak",
+        }),
+      },
+    },
+  );
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  assertEquals(
+    await Promise.all([
+      host.execute("first", "inspect", 20),
+      host.execute("second", "inspect", 0),
+    ]),
+    [
+      { id: "first", secrets: { ALLOWED: "scoped-only" } },
+      { id: "second", secrets: { ALLOWED: "scoped-only" } },
+    ],
+  );
+});
+
+test("ExtensionHost bounds concurrent executions and releases capacity after completion", {
+  timeout: 15_000,
+}, async (t) => {
+  const directory = await makeTempDirectory();
+  const releases: ((value: JsonValue) => void)[] = [];
+  let allEntered!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    allEntered = resolve;
+  });
+  const base = await isolationHost(
+    directory,
+    'export default { actions: { inspect: context => context.host.ui.showMessage({ title: "Test", message: "Test" }) } };',
+  );
+  const host = await isolationHost(
+    directory,
+    await fs.readFile(`${directory}/extension.mjs`, "utf8"),
+    [],
+    [],
+    {
+      manifest: { ...base.manifest, capabilities: ["host.ui.message-box"] },
+      grant: {
+        capabilities: ["host.ui.message-box"],
+        network: [],
+        secrets: [],
+      },
+      hostCapabilities: {
+        invoke: () =>
+          new Promise((resolve) => {
+            releases.push(resolve);
+            if (releases.length === 32) allEntered();
+          }),
+      },
+    },
+  );
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  const executions = Array.from({ length: 32 }, (_, index) =>
+    host.execute(`parallel-${index}`, "inspect", null, 10_000),
+  );
+  // Attach handlers before waiting so a failed startup cannot produce unhandled rejections.
+  const completed = Promise.all(executions);
+  void completed.catch(() => undefined);
+  await entered;
+  await assertRejects(
+    () => host.execute("overflow", "inspect", null),
+    Error,
+    "execution limit",
+  );
+  releases.forEach((resolve) => resolve({ displayed: true }));
+  assertEquals((await completed).length, 32);
+  const next = host.execute("after-completion", "inspect", null);
+  while (releases.length < 33)
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  releases[32]!({ displayed: true });
+  assertEquals(await next, { displayed: true });
+});
+
+test("ExtensionHost stops pending work and ignores a late host reply after restarting", async (t) => {
+  const directory = await makeTempDirectory();
+  let release!: (value: JsonValue) => void, entered!: () => void;
+  const called = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const base = await isolationHost(
+    directory,
+    'export default { actions: { inspect: (context, input) => input ? context.host.ui.showMessage({ title: "Test", message: "Test" }) : "fresh" } };',
+  );
+  const host = await isolationHost(
+    directory,
+    await fs.readFile(`${directory}/extension.mjs`, "utf8"),
+    [],
+    [],
+    {
+      manifest: { ...base.manifest, capabilities: ["host.ui.message-box"] },
+      grant: {
+        capabilities: ["host.ui.message-box"],
+        network: [],
+        secrets: [],
+      },
+      hostCapabilities: {
+        invoke: () =>
+          new Promise((resolve) => {
+            release = resolve;
+            entered();
+          }),
+      },
+    },
+  );
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  const pending = assertRejects(
+    () => host.execute("stopped", "inspect", true),
+    Error,
+    "process stopped",
+  );
+  await called;
+  host.stop();
+  await pending;
+  assertEquals(await host.execute("restarted", "inspect", false), "fresh");
+  release({ displayed: true });
+  assertEquals(
+    await host.execute("after-late-reply", "inspect", false),
+    "fresh",
+  );
+});
+
+test("ExtensionHost enforces network grants independently across simultaneous sandboxes and redirects", async (t) => {
+  let protectedRequests = 0;
+  const protectedServer = createServer((_request, response) => {
+    protectedRequests++;
+    response.end("scoped target");
+  });
+  const redirectServer = createServer((_request, response) => {
+    response.writeHead(302, {
+      location: `http://127.0.0.1:${(protectedServer.address() as AddressInfo).port}/`,
+    });
+    response.end();
+  });
+  await Promise.all([
+    new Promise<void>((resolve) =>
+      protectedServer.listen(0, "127.0.0.1", resolve),
+    ),
+    new Promise<void>((resolve) =>
+      redirectServer.listen(0, "127.0.0.1", resolve),
+    ),
+  ]);
+  const protectedPort = (protectedServer.address() as AddressInfo).port,
+    redirectPort = (redirectServer.address() as AddressInfo).port;
+  const firstDirectory = await makeTempDirectory(),
+    secondDirectory = await makeTempDirectory();
+  const source =
+    "export default { actions: { inspect: async (_context, input) => { try { const response = await fetch(input); await response.body?.cancel(); return response.ok; } catch { return false; } } } };";
+  const first = await isolationHost(firstDirectory, source, [
+    `127.0.0.1:${protectedPort}`,
+  ]);
+  const second = await isolationHost(secondDirectory, source, [
+    `127.0.0.1:${redirectPort}`,
+  ]);
+  t.after(async () => {
+    first.stop();
+    second.stop();
+    protectedServer.closeAllConnections();
+    redirectServer.closeAllConnections();
+    await Promise.all([
+      new Promise<void>((resolve) => protectedServer.close(() => resolve())),
+      new Promise<void>((resolve) => redirectServer.close(() => resolve())),
+    ]);
+    await Promise.all([
+      fs.rm(firstDirectory, { recursive: true, force: true }),
+      fs.rm(secondDirectory, { recursive: true, force: true }),
+    ]);
+  });
+  assertEquals(
+    await Promise.all([
+      first.execute("allowed", "inspect", `http://127.0.0.1:${protectedPort}/`),
+      second.execute(
+        "redirect",
+        "inspect",
+        `http://127.0.0.1:${redirectPort}/`,
+      ),
+    ]),
+    [true, false],
+  );
+  assertEquals(protectedRequests, 1);
+});
+
+test("ExtensionHost caps host calls per execution before invoking more privileged side effects", async (t) => {
+  const directory = await makeTempDirectory();
+  let invocations = 0;
+  const source =
+    'export default { actions: { inspect: async context => { const replies = await Promise.allSettled(Array.from({ length: 40 }, () => context.host.ui.showMessage({ title: "Test", message: "Test" }))); return { fulfilled: replies.filter(reply => reply.status === "fulfilled").length, denied: replies.filter(reply => reply.status === "rejected").map(reply => reply.reason.message) }; } } };';
+  const base = await isolationHost(directory, source);
+  const host = await isolationHost(directory, source, [], [], {
+    manifest: { ...base.manifest, capabilities: ["host.ui.message-box"] },
+    grant: { capabilities: ["host.ui.message-box"], network: [], secrets: [] },
+    hostCapabilities: {
+      invoke: async () => {
+        invocations++;
+        return { displayed: true };
+      },
+    },
+  });
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  const output = (await host.execute("bounded", "inspect", null)) as {
+    fulfilled: number;
+    denied: string[];
+  };
+  assertEquals(output.fulfilled, 32);
+  assertEquals(invocations, 32);
+  assertEquals(output.denied.length, 8);
+  assertEquals(
+    output.denied.every((message) => message.includes("HOST_CAPABILITY_LIMIT")),
+    true,
+  );
+});
+
+for (const frame of [
+  "{",
+  '{"type":"unknown"}',
+  '{"type":"result","executionId":42,"output":"forged"}',
+]) {
+  test(`ExtensionHost fails closed for guest-written protocol data and recovers: ${frame}`, async (t) => {
+    const directory = await makeTempDirectory();
+    const source = `import { writeSync } from "node:fs"; export default { actions: { inspect: (_context, input) => { if (input) writeSync(process.platform === "win32" ? 1 : 3, ${JSON.stringify(`${frame}\n`)}); return "healthy"; } } };`;
+    const host = await isolationHost(directory, source);
+    t.after(async () => {
+      host.stop();
+      await fs.rm(directory, { recursive: true, force: true });
+    });
+    await assertRejects(() => host.execute("forged", "inspect", true));
+    assertEquals(await host.execute("recovered", "inspect", false), "healthy");
+  });
+}
+
+test("ExtensionHost bounds request and result frames and allows a fresh valid execution", async (t) => {
+  const directory = await makeTempDirectory();
+  const host = await isolationHost(
+    directory,
+    'export default { actions: { inspect: (_context, input) => input === true ? "x".repeat(17 * 1024 * 1024) : "healthy" } };',
+  );
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  await assertRejects(
+    () =>
+      host.execute(
+        "oversized-request",
+        "inspect",
+        "x".repeat(17 * 1024 * 1024),
+      ),
+    Error,
+    "protocol limit",
+  );
+  assertEquals(
+    await host.execute("after-request", "inspect", false),
+    "healthy",
+  );
+  await assertRejects(
+    () => host.execute("oversized-result", "inspect", true),
+    Error,
+    "Extension action failed",
+  );
+  assertEquals(await host.execute("after-result", "inspect", false), "healthy");
+});
+
+test("ExtensionHost terminates hung initialization and can restart after a corrected immutable candidate", async (t) => {
+  const directory = await makeTempDirectory();
+  const host = await isolationHost(
+    directory,
+    'await new Promise(() => {}); export default { actions: { inspect: () => "healthy" } };',
+    [],
+    [],
+    { startupTimeoutMs: process.platform === "win32" ? 10_000 : 2_000 },
+  );
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  await assertRejects(() => host.start(), Error, "did not become ready");
+  await fs.writeFile(
+    `${directory}/extension.mjs`,
+    'export default { actions: { inspect: () => "healthy" } };',
+  );
+  assertEquals(
+    await host.execute("after-startup-timeout", "inspect", null),
+    "healthy",
+  );
+});
+
+test("ExtensionHost rejects outputs violating the signed schema without coercion and remains usable", async (t) => {
+  const directory = await makeTempDirectory();
+  const source =
+    'export default { actions: { inspect: (_context, input) => ({ count: input ? "1" : 1 }) } };';
+  const base = await isolationHost(directory, source);
+  await fs.writeFile(
+    `${directory}/output.json`,
+    JSON.stringify({
+      type: "object",
+      required: ["count"],
+      additionalProperties: false,
+      properties: { count: { type: "integer" } },
+    }),
+  );
+  const host = await isolationHost(directory, source, [], [], {
+    manifest: {
+      ...base.manifest,
+      actions: [{ ...base.manifest.actions[0]!, outputSchema: "output.json" }],
+    },
+  });
+  t.after(async () => {
+    host.stop();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  await assertRejects(
+    () => host.execute("invalid-output", "inspect", true),
+    Error,
+    "output violates its contract",
+  );
+  assertEquals(await host.execute("valid-output", "inspect", false), {
+    count: 1,
+  });
 });

@@ -45,3 +45,62 @@ test("Node listener preserves Fetch requests, WebSocket frames and abort shutdow
     abort.abort();
   }
 });
+
+test("Node listener transports binary WebSocket frames without text conversion", async () => {
+  const abort = new AbortController();
+  const server = await serveHttp(
+    { hostname: "127.0.0.1", port: 0, signal: abort.signal },
+    () => new Response("ok"),
+    (socket) => {
+      socket.on("error", () => undefined);
+      socket.on("message", (bytes, binary) => socket.send(bytes, { binary }));
+    },
+  );
+  const socket = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+  try {
+    await once(socket, "open");
+    const reply = once(socket, "message");
+    socket.send(Buffer.from([0, 255, 128, 10]));
+    const [bytes, binary] = await reply;
+    assertEquals(binary, true);
+    assertEquals(bytes, Buffer.from([0, 255, 128, 10]));
+  } finally {
+    socket.terminate();
+    abort.abort();
+    await server.finished;
+  }
+});
+test("Node listener rejects WebSocket upgrades outside the protocol route", async () => {
+  const abort = new AbortController();
+  let upgrades = 0;
+  const server = await serveHttp(
+    { hostname: "127.0.0.1", port: 0, signal: abort.signal },
+    () => new Response("ok"),
+    () => {
+      upgrades++;
+    },
+  );
+  const socket = new WebSocket(`ws://127.0.0.1:${server.port}/admin`);
+  socket.on("error", () => undefined);
+  try {
+    const [_request, response] = await once(socket, "unexpected-response");
+    assertEquals(response.statusCode, 404);
+    response.resume();
+    assertEquals(upgrades, 0);
+  } finally {
+    socket.terminate();
+    abort.abort();
+    await server.finished;
+  }
+});
+test("Node listener closes on an already aborted signal and supports repeated shutdown", async () => {
+  const abort = new AbortController();
+  abort.abort();
+  const server = await serveHttp(
+    { hostname: "127.0.0.1", port: 0, signal: abort.signal },
+    () => new Response("ok"),
+    () => undefined,
+  );
+  await server.finished;
+  await Promise.all([server.shutdown(), server.shutdown()]);
+});

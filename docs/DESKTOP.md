@@ -65,3 +65,9 @@ identity during a UI check. The compiled-backend IPC test verifies persistence,
 state invalidation, binary key transport and rejection of malformed operations.
 The extension isolation prerequisites in [Installation](INSTALLATION.md) apply
 to the desktop sidecar as well.
+
+Native message dialogs belong to the Tauri main window. The Rust broker attaches
+the dialog to that window and returns a failed display result if the window no
+longer exists. This avoids an unowned background alert and keeps the response
+on the private dialog channel. Verify a visible sheet and its successful action
+result in an isolated native smoke run; IPC mocks alone do not prove visibility.

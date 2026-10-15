@@ -166,3 +166,25 @@ test("project validation rejects oversized JSON Schema resources", async () => {
     await fs.rm(root, { recursive: true });
   }
 });
+
+test("project tests execute in an independent Node runner and propagate a real assertion failure", async (t) => {
+  const root = await makeTempDirectory();
+  const project = `${root}/failing-tests`;
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await createProject({
+    id: "failing-tests",
+    directory: project,
+    displayName: "Failing tests",
+    publisher: "FLAMOX365",
+    sdkSource: new URL("../sdk/mod.ts", import.meta.url).href,
+  });
+  await fs.writeFile(
+    `${project}/src/main.spec.ts`,
+    'import { test } from "node:test"; import assert from "node:assert/strict"; test("deliberate runtime regression", () => assert.equal(1, 2));',
+  );
+  await assertRejects(
+    () => testProject(project),
+    Error,
+    "Extension tests failed with exit code 1",
+  );
+});

@@ -21,6 +21,7 @@ const maximumMessageBytes = 16 * 1024 * 1024;
 let child: ChildProcess | undefined;
 let starting: Promise<void> | undefined;
 let stopping = false;
+let protocolFailed = false;
 
 process.on("message", (value: SandboxStart | ExtensionInboundMessage) => {
   if (value.type === "sandbox-start") {
@@ -187,8 +188,10 @@ async function start(options: SandboxStart): Promise<void> {
   let buffered = "";
   const decoder = new StringDecoder("utf8");
   protocol.on("data", (chunk: Buffer) => {
+    if (stopping || protocolFailed) return;
     buffered += decoder.write(chunk);
-    if (Buffer.byteLength(buffered) > maximumMessageBytes) return void stop();
+    if (Buffer.byteLength(buffered) > maximumMessageBytes)
+      return failProtocol();
     let newline: number;
     while ((newline = buffered.indexOf("\n")) >= 0) {
       const line = buffered.slice(0, newline);
@@ -196,7 +199,7 @@ async function start(options: SandboxStart): Promise<void> {
       try {
         send(JSON.parse(line) as ExtensionOutboundMessage);
       } catch {
-        void stop();
+        failProtocol();
         return;
       }
     }
@@ -205,6 +208,17 @@ async function start(options: SandboxStart): Promise<void> {
   child.stderr?.resume();
   child.once("error", () => void stop());
   child.once("exit", () => void stop());
+}
+
+function failProtocol(): void {
+  protocolFailed = true;
+  void send({
+    type: "error",
+    executionId: null,
+    code: "EXTENSION_PROTOCOL_INVALID",
+    message: "Extension protocol data is invalid.",
+    errorName: "ProtocolError",
+  }).finally(() => stop());
 }
 
 function send(value: ExtensionOutboundMessage): Promise<void> {
