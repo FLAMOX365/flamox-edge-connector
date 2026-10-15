@@ -1,3 +1,4 @@
+import { serveHttp, type HttpServer } from "./http-server.ts";
 import type { ConnectorConfig } from "./config.ts";
 import { loadConfig } from "./config.ts";
 import {
@@ -65,6 +66,7 @@ export type ManagedExtensionRuntime = {
 };
 
 export type ExtensionRuntimeOptions = {
+  readonly onStateChanged?: () => void;
   readonly hostCapabilities?: ExtensionHostCapabilityProvider;
 };
 
@@ -161,6 +163,7 @@ export async function createRuntimeBundle(
       verifier: managedExtensions.verifier,
       policy: managedExtensions.policy,
       secrets: managedExtensions.secrets,
+      onStateChanged: options.onStateChanged,
     },
     logger,
   );
@@ -226,9 +229,7 @@ export function createHandler(
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
         return new Response("WebSocket upgrade required", { status: 426 });
       }
-      const { socket, response } = Deno.upgradeWebSocket(request);
-      runtime.attachWebSocket(socket);
-      return response;
+      return new Response("WebSocket upgrade required", { status: 426 });
     }
 
     return new Response("Not found", { status: 404 });
@@ -242,18 +243,19 @@ export async function startConnectorHost(
   options: ExtensionRuntimeOptions = {},
 ): Promise<ConnectorHost> {
   const bundle = await createRuntimeBundle(config, logger, options);
-  const status = createRuntimeStatus();
+  const status = createRuntimeStatus(Date.now(), options.onStateChanged);
   const handler = createHandler(bundle.runtime, config, status);
   const abortController = new AbortController();
-  let server: Deno.HttpServer;
+  let server: HttpServer;
   try {
-    server = Deno.serve(
+    server = await serveHttp(
       {
         hostname: config.host,
         port: config.port,
         signal: abortController.signal,
       },
       handler,
+      (socket) => bundle.runtime.attachWebSocket(socket),
     );
   } catch (error) {
     bundle.extensionManager.stop();
@@ -266,6 +268,7 @@ export async function startConnectorHost(
       handler,
       abortController.signal,
       logger,
+      (socket) => bundle.runtime.attachWebSocket(socket),
     ),
     superviseTask(
       "functions-watcher",
@@ -338,13 +341,14 @@ async function superviseTask(
  * bind is the caller's responsibility (fatal); this supervises rebinds only.
  */
 async function superviseHttpServer(
-  initial: Deno.HttpServer,
+  initial: HttpServer,
   config: ConnectorConfig,
   handler: (request: Request) => Response,
   signal: AbortSignal,
   logger: RuntimeLogger,
+  onWebSocket: Parameters<typeof serveHttp>[2],
 ): Promise<void> {
-  let server: Deno.HttpServer | undefined = initial;
+  let server: HttpServer | undefined = initial;
   while (!signal.aborted) {
     if (server !== undefined) {
       try {
@@ -360,9 +364,10 @@ async function superviseHttpServer(
     if (signal.aborted) break;
 
     try {
-      server = Deno.serve(
+      server = await serveHttp(
         { hostname: config.host, port: config.port, signal },
         handler,
+        onWebSocket,
       );
     } catch (error) {
       // Do not await the stale (finished) server again on the next iteration;
@@ -382,27 +387,27 @@ if (import.meta.main) {
   let startupComplete = false;
   let shuttingDown = false;
 
-  globalThis.addEventListener("unhandledrejection", (event) => {
-    if (!startupComplete) return;
-    // preventDefault FIRST so the process survives even if logging itself
-    // throws (e.g. a broken stdout stream or a throwing error object).
-    event.preventDefault();
+  process.on("unhandledRejection", (error: unknown) => {
+    if (!startupComplete) {
+      console.error(error);
+      process.exit(EX_SOFTWARE);
+    }
     try {
-      console.error(
-        "[flamox-edge-connector] unhandled rejection (recovered):",
-        event.reason,
-      );
-    } catch { /* never let logging terminate the process */ }
+      console.error("Unhandled runtime rejection", error);
+    } catch {
+      /* Logging must not stop recovery. */
+    }
   });
-  globalThis.addEventListener("error", (event) => {
-    if (!startupComplete) return;
-    event.preventDefault();
+  process.on("uncaughtException", (error: Error) => {
+    if (!startupComplete) {
+      console.error(error);
+      process.exit(EX_SOFTWARE);
+    }
     try {
-      console.error(
-        "[flamox-edge-connector] uncaught error (recovered):",
-        event.error,
-      );
-    } catch { /* never let logging terminate the process */ }
+      console.error("Uncaught runtime error", error);
+    } catch {
+      /* Logging must not stop recovery. */
+    }
   });
 
   let config: ConnectorConfig;
@@ -415,7 +420,7 @@ if (import.meta.main) {
       "[flamox-edge-connector] FATAL: invalid configuration:",
       error instanceof Error ? error.message : error,
     );
-    Deno.exit(EX_CONFIG);
+    process.exit(EX_CONFIG);
   }
 
   let host: ConnectorHost;
@@ -426,7 +431,11 @@ if (import.meta.main) {
       "[flamox-edge-connector] FATAL: failed to initialize or bind runtime:",
       error,
     );
-    Deno.exit(error instanceof Deno.errors.AddrInUse ? EX_OSERR : EX_SOFTWARE);
+    process.exit(
+      error instanceof Error && "code" in error && error.code === "EADDRINUSE"
+        ? EX_OSERR
+        : EX_SOFTWARE,
+    );
   }
 
   const shutdown = () => {
@@ -434,8 +443,8 @@ if (import.meta.main) {
     shuttingDown = true;
     host.stop();
   };
-  Deno.addSignalListener("SIGINT", shutdown);
-  Deno.addSignalListener("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 
   startupComplete = true;
 

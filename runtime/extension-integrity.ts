@@ -1,5 +1,6 @@
-import { walk } from "@std/fs";
-import { relative } from "@std/path";
+import * as fs from "node:fs/promises";
+import { walk } from "./files.ts";
+import { relative } from "node:path";
 import type { ExtensionManifest } from "./extension-manifest.ts";
 
 const maximumPackageFiles = 1_000;
@@ -29,14 +30,18 @@ export function parseExtensionReleaseDescriptor(
   if (!isRecord(value)) {
     throw new Error("Extension release descriptor must be an object.");
   }
-  exactKeys(value, [
-    "extensionId",
-    "version",
-    "digest",
-    "publisher",
-    "publisherKeyId",
-    "signature",
-  ], "Extension release descriptor");
+  exactKeys(
+    value,
+    [
+      "extensionId",
+      "version",
+      "digest",
+      "publisher",
+      "publisherKeyId",
+      "signature",
+    ],
+    "Extension release descriptor",
+  );
   const descriptor: ExtensionReleaseDescriptor = {
     extensionId: requiredText(value.extensionId, "extensionId"),
     version: requiredText(value.version, "version"),
@@ -64,7 +69,8 @@ export type TrustedPublisherFile = {
 
 /** Verifies immutable release metadata against locally trusted Ed25519 keys. */
 export class Ed25519ExtensionReleaseVerifier
-  implements ExtensionReleaseVerifier {
+  implements ExtensionReleaseVerifier
+{
   readonly #publishers: ReadonlyMap<string, TrustedPublisher>;
 
   constructor(publishers: readonly TrustedPublisher[]) {
@@ -139,11 +145,11 @@ export async function readTrustedPublishersFile(
 ): Promise<readonly TrustedPublisher[]> {
   let parsed: unknown;
   try {
-    const info = await Deno.stat(path);
-    if (!info.isFile || info.size > 1024 * 1024) {
+    const info = await fs.stat(path);
+    if (!info.isFile() || info.size > 1024 * 1024) {
       throw new Error("Trusted publishers file is missing or too large.");
     }
-    parsed = JSON.parse(await Deno.readTextFile(path));
+    parsed = JSON.parse(await fs.readFile(path, "utf8"));
   } catch (error) {
     throw new Error(`Unable to read trusted publishers from '${path}'.`, {
       cause: error,
@@ -158,19 +164,17 @@ export async function computeExtensionDigest(
 ): Promise<string> {
   const entries: Array<{ path: string; size: number; hash: string }> = [];
   let totalSize = 0;
-  for await (
-    const entry of walk(rootDirectory, {
-      includeDirs: false,
-      includeSymlinks: true,
-      followSymlinks: false,
-    })
-  ) {
-    if (entry.isSymlink) {
+  for await (const entry of walk(rootDirectory, {
+    includeDirs: false,
+    includeSymlinks: true,
+    followSymlinks: false,
+  })) {
+    if (entry.isSymbolicLink()) {
       throw new Error(
         `Extension packages must not contain symbolic links ('${entry.path}').`,
       );
     }
-    if (!entry.isFile) {
+    if (!entry.isFile()) {
       continue;
     }
     if (entries.length >= maximumPackageFiles) {
@@ -178,7 +182,7 @@ export async function computeExtensionDigest(
         `Extension package exceeds ${maximumPackageFiles} files.`,
       );
     }
-    const info = await Deno.stat(entry.path);
+    const info = await fs.stat(entry.path);
     if (info.size > maximumPackageFileBytes) {
       throw new Error(
         `Extension package file '${entry.path}' exceeds ${maximumPackageFileBytes} bytes.`,
@@ -190,7 +194,7 @@ export async function computeExtensionDigest(
         `Extension package exceeds ${maximumPackageBytes} bytes.`,
       );
     }
-    const bytes = await Deno.readFile(entry.path);
+    const bytes = await fs.readFile(entry.path);
     entries.push({
       path: relative(rootDirectory, entry.path).replaceAll("\\", "/"),
       size: info.size,
@@ -201,14 +205,9 @@ export async function computeExtensionDigest(
   const canonical = entries
     .map((entry) => `${entry.path}\0${entry.size}\0${entry.hash}\n`)
     .join("");
-  return `sha256:${
-    hex(
-      await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(canonical),
-      ),
-    )
-  }`;
+  return `sha256:${hex(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)),
+  )}`;
 }
 
 /** Canonical bytes signed by an extension publisher. */
@@ -252,7 +251,8 @@ export function parseTrustedPublishers(
   value: unknown,
 ): readonly TrustedPublisher[] {
   if (
-    !isRecord(value) || value.schemaVersion !== 1 ||
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
     !Array.isArray(value.publishers)
   ) {
     throw new Error("Trusted publishers file must use schemaVersion 1.");
@@ -276,8 +276,10 @@ export function parseTrustedPublishers(
       `Trusted publisher ${index}`,
     );
     if (
-      nested.publicKey.kty !== "OKP" || nested.publicKey.crv !== "Ed25519" ||
-      typeof nested.publicKey.x !== "string" || nested.publicKey.x.length === 0
+      nested.publicKey.kty !== "OKP" ||
+      nested.publicKey.crv !== "Ed25519" ||
+      typeof nested.publicKey.x !== "string" ||
+      nested.publicKey.x.length === 0
     ) {
       throw new Error(
         `Trusted publisher ${index} must contain an Ed25519 public JWK.`,
@@ -298,7 +300,8 @@ export function parseTrustedPublishers(
 
 /** Mutable union of locally configured and control-plane publisher keys. */
 export class ManagedExtensionReleaseVerifier
-  implements ExtensionReleaseVerifier {
+  implements ExtensionReleaseVerifier
+{
   readonly #local: readonly TrustedPublisher[];
   #managed: readonly TrustedPublisher[] = [];
 

@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals, assertRejects, assertThrows } from "../test/assert.ts";
 import type { ExtensionReleaseVerifier } from "./extension-integrity.ts";
 import { computeExtensionDigest } from "./extension-integrity.ts";
 import { ExtensionManager } from "./extension-manager.ts";
@@ -6,8 +9,8 @@ import { readExtensionManifest } from "./extension-manifest.ts";
 import { StaticExtensionPolicy } from "./extension-policy.ts";
 import { ExtensionStateStore } from "./extension-state.ts";
 
-Deno.test("ExtensionManager installs, executes, updates and removes an isolated extension", async () => {
-  const root = await Deno.makeTempDir();
+test("ExtensionManager installs, executes, updates and removes an isolated extension", async () => {
+  const root = await makeTempDirectory();
   const source = `${root}/source`;
   const data = `${root}/data`;
   await writePackage(source, "1.0.0", "v1");
@@ -107,12 +110,12 @@ Deno.test("ExtensionManager installs, executes, updates and removes an isolated 
     assertEquals(manager.list(), []);
   } finally {
     manager.stop();
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("ExtensionManager preserves the active release when candidate health fails", async () => {
-  const root = await Deno.makeTempDir();
+test("ExtensionManager preserves the active release when candidate health fails", async () => {
+  const root = await makeTempDirectory();
   const source = `${root}/source`;
   const data = `${root}/data`;
   await writePackage(source, "1.0.0", "healthy");
@@ -146,25 +149,21 @@ Deno.test("ExtensionManager preserves the active release when candidate health f
     );
   } finally {
     manager.stop();
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("ExtensionManager prevents concurrent ownership of one data directory", async () => {
-  const root = await Deno.makeTempDir();
+test("ExtensionManager prevents concurrent ownership of one data directory", async () => {
+  const root = await makeTempDirectory();
   const first = createManager(root);
   const second = createManager(root);
   try {
     await first.initialize();
-    await assertRejects(
-      () => second.initialize(),
-      Error,
-      "already owns",
-    );
+    await assertRejects(() => second.initialize(), Error, "already owns");
   } finally {
     first.stop();
     second.stop();
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
@@ -189,16 +188,72 @@ function createManager(dataDirectory: string): ExtensionManager {
       `${dataDirectory}/state/extensions.json`,
     ),
     verifier: acceptingVerifier,
-    policy: new StaticExtensionPolicy([{
-      extensionId: "system.diagnostics",
-      publishers: ["FLAMOX365"],
-      capabilities: ["system.diagnostics.read"],
-      network: [],
-      secrets: [],
-    }]),
+    policy: new StaticExtensionPolicy([
+      {
+        extensionId: "system.diagnostics",
+        publishers: ["FLAMOX365"],
+        capabilities: ["system.diagnostics.read"],
+        network: [],
+        secrets: [],
+      },
+    ]),
     secrets: { resolve: () => Promise.resolve({}) },
   });
 }
+
+test("ExtensionManager retains historical packages and configuration when their runtime is unsupported", async () => {
+  const root = await makeTempDirectory("edge-legacy-");
+  const data = `${root}/data`;
+  const packagePath = "packages/system.diagnostics/1.0.0/legacy";
+  const directory = `${data}/${packagePath}`;
+  await writePackage(directory, "1.0.0", "legacy");
+  const manifestPath = `${directory}/extension-manifest.json`;
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  manifest.runtime.kind = "deno-worker";
+  const historical = JSON.stringify(manifest);
+  await fs.writeFile(manifestPath, historical);
+  const stateStore = new ExtensionStateStore(`${data}/state/extensions.json`);
+  await stateStore.save([
+    {
+      managementMode: "LOCAL",
+      extensionId: manifest.id,
+      version: "1.0.0",
+      packagePath,
+      release: {
+        extensionId: manifest.id,
+        version: "1.0.0",
+        digest: await computeExtensionDigest(directory),
+        publisher: "FLAMOX365",
+        publisherKeyId: "test-key",
+        signature: "test-signature",
+      },
+      grant: diagnosticsGrant,
+      configuration: { enabled: true },
+      installedAt: "2026-01-01T00:00:00.000Z",
+      activatedAt: "2026-01-01T00:00:00.000Z",
+      status: "ACTIVE",
+      lastErrorCode: null,
+    },
+  ]);
+  const manager = createManager(data);
+  try {
+    await manager.initialize();
+    const retained = (await stateStore.load())[0]!;
+    assertEquals(retained.status, "ERROR");
+    assertEquals(retained.lastErrorCode, "EXTENSION_RESTORE_FAILED");
+    assertEquals(retained.configuration, { enabled: true });
+    assertEquals(retained.packagePath, packagePath);
+    assertEquals(await fs.readFile(manifestPath, "utf8"), historical);
+    assertThrows(
+      () => manager.execute("legacy", manifest.id, "status", null),
+      Error,
+      "not active",
+    );
+  } finally {
+    manager.stop();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 async function release(directory: string, version: string) {
   const manifest = await readExtensionManifest(directory);
@@ -218,11 +273,11 @@ async function writePackage(
   output: string,
 ): Promise<void> {
   await writeManifest(directory, version);
-  await Deno.writeTextFile(
-    `${directory}/extension.js`,
-    `export default { actions: { status: (ctx) => ({ version: ${
-      JSON.stringify(output)
-    }, ...(ctx.configuration.enabled === undefined ? {} : { enabled: ctx.configuration.enabled }) }) } };\n`,
+  await fs.writeFile(
+    `${directory}/extension.mjs`,
+    `export default { actions: { status: (ctx) => ({ version: ${JSON.stringify(
+      output,
+    )}, ...(ctx.configuration.enabled === undefined ? {} : { enabled: ctx.configuration.enabled }) }) } };\n`,
   );
 }
 
@@ -231,8 +286,8 @@ async function writeFailingPackage(
   version: string,
 ): Promise<void> {
   await writeManifest(directory, version);
-  await Deno.writeTextFile(
-    `${directory}/extension.js`,
+  await fs.writeFile(
+    `${directory}/extension.mjs`,
     "export default { actions: { status: () => { throw new Error('unhealthy'); } } };\n",
   );
 }
@@ -241,9 +296,9 @@ async function writeManifest(
   directory: string,
   version: string,
 ): Promise<void> {
-  await Deno.remove(directory, { recursive: true }).catch(() => undefined);
-  await Deno.mkdir(directory, { recursive: true });
-  await Deno.writeTextFile(
+  await fs.rm(directory, { recursive: true }).catch(() => undefined);
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(
     `${directory}/extension-manifest.json`,
     JSON.stringify({
       schemaVersion: 2,
@@ -252,7 +307,7 @@ async function writeManifest(
       description: "Reports diagnostic state.",
       publisher: "FLAMOX365",
       version,
-      runtime: { kind: "deno-worker", entrypoint: "extension.js" },
+      runtime: { kind: "node-process", entrypoint: "extension.mjs" },
       configurationSchema: "configuration.schema.json",
       capabilities: ["system.diagnostics.read"],
       permissions: { network: [], secrets: [] },
@@ -260,7 +315,7 @@ async function writeManifest(
       health: { action: "status", timeoutSeconds: 5 },
     }),
   );
-  await Deno.writeTextFile(
+  await fs.writeFile(
     `${directory}/configuration.schema.json`,
     JSON.stringify({
       $schema: "https://json-schema.org/draft/2020-12/schema",

@@ -1,17 +1,17 @@
-# @flamox/edge-connector-sdk
+# @edge-connector/sdk
 
-Minimal authoring contract for isolated Edge Connector extensions.
+The Node.js 26 / TypeScript 7 authoring contract for Edge Connector extensions
+and retained operator HTTP Functions. The source belongs to the connector;
+the extensions catalog pins it through its Git submodule.
 
-```json
-{
-  "imports": {
-    "@edge-connector/sdk": "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/8140bcd622e7c3af9ac9d9af7fd7650b6f5310e7/sdk/mod.ts"
-  }
-}
+```bash
+yarn workspace @edge-connector/sdk build
 ```
 
-An entrypoint exports exactly one extension definition. Exported action names
-must exactly match the signed manifest.
+Use the built package as a locked `file:` dependency pointing to the SDK in the
+pinned checkout. Package exports include `extension`, `http`, `errors`, `types`,
+`areas/telephony`, `areas/telephony-schemas` and `tcp`. JavaScript ESM and
+TypeScript declarations are emitted in `dist`.
 
 ```ts
 import { defineExtension } from "@edge-connector/sdk";
@@ -27,13 +27,19 @@ export default defineExtension({
 });
 ```
 
-Inputs, configuration and outputs are JSON values. Secrets are strings scoped to
-the names declared by the manifest and granted by local policy. The worker
-cannot read other environment variables. Network calls use the platform
-`fetch()` API and succeed only for exact granted hosts/ports.
+Declared actions must exactly match the signed manifest. Inputs, configuration
+and outputs are JSON values. Only named, granted secrets enter the context;
+the connector's parent environment is not inherited. Do not log secrets,
+return them from actions or store them in configuration.
 
-The commit-pinned URL makes this repository the authoritative SDK source. During
-`extension build` or `extension pack`, the CLI resolves the locked module graph
-and bundles it into the `.fmx`. The worker therefore performs no remote imports
-at the customer. Do not log secrets, return them from actions or store them in
-configuration.
+HTTP/fetch requests use the authenticated per-extension proxy. For a native TCP
+driver, `connectTcp(host, port, timeoutMilliseconds)` from
+`@edge-connector/sdk/tcp` returns a Node socket through the same grant-filtered
+SOCKS proxy. It requires a sandbox-provided authenticated proxy and never falls
+back to a direct connection. The SQL Server extension passes it to Tedious's
+`options.connector` seam.
+
+The CLI type-checks and bundles the locked graph into `runtime/extension.mjs`.
+Installed extensions do not resolve npm/JSR/HTTP imports, load native addons or
+spawn child processes. Network policy remains enforced by the OS and proxy,
+not by trusting extension code to use these SDK helpers.

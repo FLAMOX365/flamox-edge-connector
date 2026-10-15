@@ -1,9 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "../runtime/files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals } from "../test/assert.ts";
 import { CliConfigStore } from "./config.ts";
 import { runCli } from "./main.ts";
 
-Deno.test("init creates a tested and signed deployable extension without manual file work", async () => {
-  const root = await Deno.makeTempDir();
+test("init creates a tested and signed deployable extension without manual file work", async () => {
+  const root = await makeTempDirectory();
   const project = `${root}/ready-extension`;
   const store = new CliConfigStore(`${root}/cli`);
   try {
@@ -34,15 +37,15 @@ Deno.test("init creates a tested and signed deployable extension without manual 
     );
 
     const manifest = JSON.parse(
-      await Deno.readTextFile(`${project}/extension-manifest.json`),
+      await fs.readFile(`${project}/extension-manifest.json`, "utf8"),
     );
     assertEquals(manifest.id, "ready-extension");
     assertEquals(manifest.version, "1.0.0");
     assertEquals(manifest.configurationSchema, "configuration.schema.json");
     const artifact = `${project}/.edge/releases/ready-extension-1.0.0.fmx`;
-    assertEquals((await Deno.stat(artifact)).isFile, true);
+    assertEquals((await fs.stat(artifact)).isFile(), true);
     assertEquals((await store.load()).publisher?.keyId, "official-2026");
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });

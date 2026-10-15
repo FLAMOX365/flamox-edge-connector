@@ -7,7 +7,7 @@
   "publisher": "Customer GmbH",
   "version": "1.0.0",
   "runtime": {
-    "kind": "deno-worker",
+    "kind": "node-process",
     "entrypoint": "main.ts"
   },
   "capabilities": ["customer.example.read"],

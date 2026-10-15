@@ -1,3 +1,4 @@
+import { environmentSnapshot } from "./environment.ts";
 export interface ExtensionSecretProvider {
   resolve(
     extensionId: string,
@@ -7,12 +8,14 @@ export interface ExtensionSecretProvider {
 
 /** Resolves only explicitly granted extension secrets from the process environment. */
 export class EnvironmentExtensionSecretProvider
-  implements ExtensionSecretProvider {
+  implements ExtensionSecretProvider
+{
   readonly #environment: Readonly<Record<string, string | undefined>>;
 
   constructor(
-    environment: Readonly<Record<string, string | undefined>> = Deno.env
-      .toObject(),
+    environment: Readonly<
+      Record<string, string | undefined>
+    > = environmentSnapshot(),
   ) {
     this.#environment = environment;
   }
@@ -42,10 +45,7 @@ export class ManagedExtensionSecretProvider implements ExtensionSecretProvider {
 
   constructor(private readonly fallback?: ExtensionSecretProvider) {}
 
-  update(
-    extensionId: string,
-    secrets: Readonly<Record<string, string>>,
-  ): void {
+  update(extensionId: string, secrets: Readonly<Record<string, string>>): void {
     const copy: Record<string, string> = {};
     for (const [name, value] of Object.entries(secrets)) {
       if (!/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/u.test(name) || !value) {

@@ -93,7 +93,7 @@ Starts all components together.
 
 ```
 ad-user-export/
-├── deno.json
+├── package.json
 ├── docker-compose.yml
 ├── .env.example
 ├── functions/
@@ -357,3 +357,11 @@ def get_user(samname: str) -> dict:
 
 For real-time updates, you can use AD notifications (requires additional
 configuration).
+
+## Node.js development
+
+From the connector root, run `yarn install --immutable`, `yarn build`, and
+`yarn check:templates`. The examples use the built SDK through Yarn workspaces.
+When copying an example outside this checkout, replace its SDK dependency with a
+`file:` reference to the SDK in a built, pinned connector checkout, then run
+`yarn install` in the copied project.

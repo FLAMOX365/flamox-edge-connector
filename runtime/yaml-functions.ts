@@ -1,4 +1,4 @@
-import { parse as parseYaml } from "@std/yaml";
+import { parse as parseYaml } from "yaml";
 import type {
   EdgeConnectorHttpRequest,
   EdgeConnectorHttpResponse,

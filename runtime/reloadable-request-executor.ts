@@ -1,3 +1,4 @@
+import { environmentSnapshot } from "./environment.ts";
 import type { ConnectorConfig } from "./config.ts";
 import type { ProtocolExecutor } from "./connector.ts";
 import { HttpFunctionRouter } from "./function-router.ts";
@@ -27,7 +28,7 @@ export class ReloadableProtocolExecutor implements ProtocolExecutor {
 
   constructor(options: ReloadableProtocolExecutorOptions) {
     this.config = options.config;
-    this.env = options.env ?? Deno.env.toObject();
+    this.env = options.env ?? environmentSnapshot();
     this.logger = options.logger ?? createLogger(this.config.logLevel);
     this.delegate = new HttpProxyExecutor({ logger: this.logger });
   }

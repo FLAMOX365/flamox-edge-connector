@@ -1,3 +1,4 @@
+import type { WebSocket } from "ws";
 import type {
   EdgeConnectorHttpResponse,
   EdgeConnectorMessageFrame,
@@ -26,9 +27,7 @@ export type FrameSender = (frame: WritableFrame) => void | Promise<void>;
  * without pretending to be HTTP functions.
  */
 export interface ProtocolExecutor {
-  execute(
-    frame: EdgeConnectorRequestFrame,
-  ): Promise<EdgeConnectorHttpResponse>;
+  execute(frame: EdgeConnectorRequestFrame): Promise<EdgeConnectorHttpResponse>;
 }
 
 export type ConnectorRuntimeOptions = {
@@ -66,9 +65,8 @@ export class ConnectorRuntime {
 
   attachWebSocket(socket: WebSocket): void {
     socket.addEventListener("message", (event) => {
-      void this.handleSocketMessage(
-        event.data,
-        (frame) => socket.send(serializeFrame(frame)),
+      void this.handleSocketMessage(event.data, (frame) =>
+        socket.send(serializeFrame(frame)),
       ).catch((error) => {
         this.logger.error("Failed to process WebSocket message", error);
       });

@@ -1,3 +1,4 @@
+import { environmentSnapshot } from "./environment.ts";
 import { defaultLogLevel, isLogLevel, type LogLevel } from "./logger.ts";
 
 export type ConnectorConfig = {
@@ -63,13 +64,10 @@ const defaultReconnectJitterRatio = 0.5;
 const defaultLivenessStaleSeconds = 120;
 
 export function loadConfig(
-  env: Record<string, string | undefined> = Deno.env.toObject(),
+  env: Record<string, string | undefined> = environmentSnapshot(),
 ): ConnectorConfig {
   const allowInsecureConnections = readBoolean(
-    environmentValue(
-      env,
-      "EDGE_CONNECTOR_ALLOW_INSECURE_CONNECTIONS",
-    ),
+    environmentValue(env, "EDGE_CONNECTOR_ALLOW_INSECURE_CONNECTIONS"),
     false,
     "EDGE_CONNECTOR_ALLOW_INSECURE_CONNECTIONS",
   );
@@ -128,33 +126,36 @@ export function loadConfig(
     clientSecret,
   );
 
-  const reconnectMaxDelayMs = readInteger(
-    environmentValue(
-      env,
+  const reconnectMaxDelayMs =
+    readInteger(
+      environmentValue(
+        env,
+        "EDGE_CONNECTOR_RECONNECT_MAX_SECONDS",
+        "CLOUD_CONNECTOR_RECONNECT_MAX_SECONDS",
+      ),
+      defaultReconnectMaxSeconds,
       "EDGE_CONNECTOR_RECONNECT_MAX_SECONDS",
-      "CLOUD_CONNECTOR_RECONNECT_MAX_SECONDS",
-    ),
-    defaultReconnectMaxSeconds,
-    "EDGE_CONNECTOR_RECONNECT_MAX_SECONDS",
-  ) * 1000;
-  const heartbeatIntervalMs = readInteger(
-    environmentValue(
-      env,
+    ) * 1000;
+  const heartbeatIntervalMs =
+    readInteger(
+      environmentValue(
+        env,
+        "EDGE_CONNECTOR_HEARTBEAT_INTERVAL_SECONDS",
+        "CLOUD_CONNECTOR_HEARTBEAT_INTERVAL_SECONDS",
+      ),
+      defaultHeartbeatSeconds,
       "EDGE_CONNECTOR_HEARTBEAT_INTERVAL_SECONDS",
-      "CLOUD_CONNECTOR_HEARTBEAT_INTERVAL_SECONDS",
-    ),
-    defaultHeartbeatSeconds,
-    "EDGE_CONNECTOR_HEARTBEAT_INTERVAL_SECONDS",
-  ) * 1000;
-  const livenessStaleMs = readInteger(
-    environmentValue(
-      env,
+    ) * 1000;
+  const livenessStaleMs =
+    readInteger(
+      environmentValue(
+        env,
+        "EDGE_CONNECTOR_LIVENESS_STALE_SECONDS",
+        "CLOUD_CONNECTOR_LIVENESS_STALE_SECONDS",
+      ),
+      defaultLivenessStaleSeconds,
       "EDGE_CONNECTOR_LIVENESS_STALE_SECONDS",
-      "CLOUD_CONNECTOR_LIVENESS_STALE_SECONDS",
-    ),
-    defaultLivenessStaleSeconds,
-    "EDGE_CONNECTOR_LIVENESS_STALE_SECONDS",
-  ) * 1000;
+    ) * 1000;
 
   validateLivenessWindow(
     livenessStaleMs,
@@ -163,9 +164,10 @@ export function loadConfig(
   );
 
   return {
-    host: readOptionalText(
-      environmentValue(env, "EDGE_CONNECTOR_BIND_HOST", "CONNECTOR_HOST"),
-    ) ?? "0.0.0.0",
+    host:
+      readOptionalText(
+        environmentValue(env, "EDGE_CONNECTOR_BIND_HOST", "CONNECTOR_HOST"),
+      ) ?? "0.0.0.0",
     port: readPort(
       environmentValue(env, "EDGE_CONNECTOR_BIND_PORT", "CONNECTOR_PORT"),
       defaultPort,
@@ -179,22 +181,25 @@ export function loadConfig(
     allowInsecureConnections,
     managementUrl,
     pairingCode,
-    connectorDisplayName: readOptionalText(
-      environmentValue(env, "EDGE_CONNECTOR_DISPLAY_NAME"),
-    ) ?? "Edge Connector",
-    managementPollIntervalMs: readInteger(
-      environmentValue(env, "EDGE_CONNECTOR_MANAGEMENT_POLL_SECONDS"),
-      defaultManagementPollSeconds,
-      "EDGE_CONNECTOR_MANAGEMENT_POLL_SECONDS",
-    ) * 1000,
-    functionsDir: readOptionalPath(
-      environmentValue(
-        env,
-        "EDGE_CONNECTOR_FUNCTIONS_DIR",
-        "CLOUD_CONNECTOR_FUNCTIONS_DIR",
-      ),
-    ) ?? defaultFunctionsDirectory,
-    dataDirectory: readOptionalPath(env.EDGE_CONNECTOR_DATA_DIRECTORY) ??
+    connectorDisplayName:
+      readOptionalText(environmentValue(env, "EDGE_CONNECTOR_DISPLAY_NAME")) ??
+      "Edge Connector",
+    managementPollIntervalMs:
+      readInteger(
+        environmentValue(env, "EDGE_CONNECTOR_MANAGEMENT_POLL_SECONDS"),
+        defaultManagementPollSeconds,
+        "EDGE_CONNECTOR_MANAGEMENT_POLL_SECONDS",
+      ) * 1000,
+    functionsDir:
+      readOptionalPath(
+        environmentValue(
+          env,
+          "EDGE_CONNECTOR_FUNCTIONS_DIR",
+          "CLOUD_CONNECTOR_FUNCTIONS_DIR",
+        ),
+      ) ?? defaultFunctionsDirectory,
+    dataDirectory:
+      readOptionalPath(env.EDGE_CONNECTOR_DATA_DIRECTORY) ??
       defaultDataDirectory,
     extensionPolicyFile: readOptionalPath(
       env.EDGE_CONNECTOR_EXTENSION_POLICY_FILE,
@@ -203,34 +208,37 @@ export function loadConfig(
       env.EDGE_CONNECTOR_TRUSTED_PUBLISHERS_FILE,
     ),
     heartbeatIntervalMs,
-    reconnectInitialDelayMs: readInteger(
-      environmentValue(
-        env,
+    reconnectInitialDelayMs:
+      readInteger(
+        environmentValue(
+          env,
+          "EDGE_CONNECTOR_RECONNECT_INITIAL_SECONDS",
+          "CLOUD_CONNECTOR_RECONNECT_INITIAL_SECONDS",
+        ),
+        defaultReconnectInitialSeconds,
         "EDGE_CONNECTOR_RECONNECT_INITIAL_SECONDS",
-        "CLOUD_CONNECTOR_RECONNECT_INITIAL_SECONDS",
-      ),
-      defaultReconnectInitialSeconds,
-      "EDGE_CONNECTOR_RECONNECT_INITIAL_SECONDS",
-    ) * 1000,
+      ) * 1000,
     reconnectMaxDelayMs,
-    connectTimeoutMs: readInteger(
-      environmentValue(
-        env,
+    connectTimeoutMs:
+      readInteger(
+        environmentValue(
+          env,
+          "EDGE_CONNECTOR_CONNECT_TIMEOUT_SECONDS",
+          "CLOUD_CONNECTOR_CONNECT_TIMEOUT_SECONDS",
+        ),
+        defaultConnectTimeoutSeconds,
         "EDGE_CONNECTOR_CONNECT_TIMEOUT_SECONDS",
-        "CLOUD_CONNECTOR_CONNECT_TIMEOUT_SECONDS",
-      ),
-      defaultConnectTimeoutSeconds,
-      "EDGE_CONNECTOR_CONNECT_TIMEOUT_SECONDS",
-    ) * 1000,
-    reconnectStableThresholdMs: readInteger(
-      environmentValue(
-        env,
+      ) * 1000,
+    reconnectStableThresholdMs:
+      readInteger(
+        environmentValue(
+          env,
+          "EDGE_CONNECTOR_RECONNECT_STABLE_SECONDS",
+          "CLOUD_CONNECTOR_RECONNECT_STABLE_SECONDS",
+        ),
+        defaultReconnectStableSeconds,
         "EDGE_CONNECTOR_RECONNECT_STABLE_SECONDS",
-        "CLOUD_CONNECTOR_RECONNECT_STABLE_SECONDS",
-      ),
-      defaultReconnectStableSeconds,
-      "EDGE_CONNECTOR_RECONNECT_STABLE_SECONDS",
-    ) * 1000,
+      ) * 1000,
     heartbeatTimeoutFactor: readNonNegativeInteger(
       environmentValue(
         env,
@@ -240,15 +248,16 @@ export function loadConfig(
       defaultHeartbeatTimeoutFactor,
       "EDGE_CONNECTOR_HEARTBEAT_TIMEOUT_FACTOR",
     ),
-    tokenFetchTimeoutMs: readInteger(
-      environmentValue(
-        env,
+    tokenFetchTimeoutMs:
+      readInteger(
+        environmentValue(
+          env,
+          "EDGE_CONNECTOR_TOKEN_TIMEOUT_SECONDS",
+          "CLOUD_CONNECTOR_TOKEN_TIMEOUT_SECONDS",
+        ),
+        defaultTokenFetchTimeoutSeconds,
         "EDGE_CONNECTOR_TOKEN_TIMEOUT_SECONDS",
-        "CLOUD_CONNECTOR_TOKEN_TIMEOUT_SECONDS",
-      ),
-      defaultTokenFetchTimeoutSeconds,
-      "EDGE_CONNECTOR_TOKEN_TIMEOUT_SECONDS",
-    ) * 1000,
+      ) * 1000,
     reconnectJitterRatio: readRatio(
       environmentValue(
         env,
@@ -311,7 +320,8 @@ function validateControlPlaneAuth(
   clientId: string | undefined,
   clientSecret: string | undefined,
 ): void {
-  const hasConnectionConfig = websocketUrl !== undefined ||
+  const hasConnectionConfig =
+    websocketUrl !== undefined ||
     controlPlaneUrl !== undefined ||
     tokenEndpoint !== undefined ||
     clientId !== undefined ||

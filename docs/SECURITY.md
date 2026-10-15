@@ -50,17 +50,46 @@ configuration validation and candidate health.
 - TLS is mandatory in production, but signature and digest validation remain
   independent integrity controls.
 
-## Worker sandbox
+## Extension process sandbox
 
-Each extension worker receives read access only to its immutable package,
-network access only to exact granted hosts and ports, and only named secrets
-resolved for that extension. Environment access, writes, subprocesses, FFI and
-system information are denied.
+Each extension has its own privileged supervisor and OS-sandboxed Node.js 26
+process. `@anthropic-ai/sandbox-runtime` supplies macOS Seatbelt, Linux
+bubblewrap/network namespaces and the Windows restricted-user/WFP adapter.
+The host grants read access to the immutable extension, its bootstrap and the
+public OS/native-library files needed to run Node. Writes, direct network
+sockets and Unix sockets are unavailable. A private authenticated HTTP/SOCKS
+proxy permits only the exact granted hosts and ports, including local/private
+addresses. HTTP redirects pass through that same policy. TLS remains end to
+end; TLS termination and credential substitution are not enabled.
 
-The runtime uses Deno's granular worker permission option and therefore runs
-with `--unstable-worker-options`. Deno workers are a runtime sandbox, not a VM;
-high-risk untrusted code may still justify a process/container-per-extension
-boundary.
+The supervisor inherits only OS startup variables, never the connector's
+ambient secrets. Each action receives only its declared, granted secret names.
+Proxy credentials belong to this extension's session and cannot authorize a
+request outside its policy. A missing prerequisite or disabled enforcement
+prevents activation; there is no unsandboxed fallback.
+
+Node's Permission Model adds read restrictions and denies child processes,
+workers, addons and FFI. It is defense in depth, not the malicious-code sandbox.
+Execution timeouts terminate the complete guest process and reset the sandbox.
+The host limits execution and host-call queues, validates every protocol frame
+and brokers only explicitly declared AND granted host capabilities. The guest
+has a 128 MiB V8 heap ceiling; this is not a total RSS quota or CPU scheduler.
+
+Windows support in the upstream sandbox is **alpha**. It requires the elevated,
+one-time `windows-install` provisioning step. Its dedicated sandbox account,
+ACL grants and proxy port range are machine resources shared by concurrent
+sessions. Windows must be qualified separately for the deployment's multi-user
+and multi-extension threat model; macOS tests do not establish Windows security.
+The upstream helper also documents proxy tokens on a runner command line
+readable to principals with process-query access. See the
+[upstream security model](https://github.com/anthropic-experimental/sandbox-runtime#windows-alpha).
+
+`node-forge@1.4.0` is currently pulled in by SRT. The registry audit reports
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv), for
+which no fixed npm version is published. SRT's forge integration supplies its
+optional TLS-termination certificate machinery; this connector does not enable
+that feature or use forge for publisher/identity verification. The audit stays
+failing while the dependency is affected; it is not silently suppressed.
 
 ## Integrity and recovery
 
@@ -82,14 +111,14 @@ the upstream connector and should be restricted by network policy when unused.
 
 Functions, YAML and proxy mode retain their original broad integration power.
 They are legacy/operator-authored capabilities and do not inherit the managed
-extension worker sandbox. Migrate third-party or remotely distributed logic to
+extension process sandbox. Migrate third-party or remotely distributed logic to
 signed extensions when isolation is required.
 
 ## Residual operator responsibilities
 
 - Protect the operating-system account and deployment pipeline; either can
   replace binaries or local policy.
-- Restrict outbound firewall access independently of Deno worker permissions.
+- Restrict outbound firewall access independently of the extension sandbox policy.
 - Review publisher provenance and grants before publication or installation.
 - Treat non-secret configuration and operational audit data according to the
   customer's data-classification and retention rules.

@@ -11,7 +11,7 @@
  * - Return errors (ctx.res.error)
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 // Example user data types.
 interface User {

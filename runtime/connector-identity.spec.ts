@@ -1,12 +1,15 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals } from "../test/assert.ts";
 import {
   ConnectorIdentityStore,
   decryptConnectorSecret,
   generateConnectorKeyPair,
 } from "./connector-identity.ts";
 
-Deno.test("connector identity persists tenant binding and decrypts targeted secrets", async () => {
-  const root = await Deno.makeTempDir();
+test("connector identity persists tenant binding and decrypts targeted secrets", async () => {
+  const root = await makeTempDirectory();
   try {
     const keys = await generateConnectorKeyPair();
     const identity = {
@@ -45,6 +48,6 @@ Deno.test("connector identity persists tenant binding and decrypts targeted secr
       "fritz-secret",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });

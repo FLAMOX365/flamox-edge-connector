@@ -1,7 +1,8 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../test/assert.ts";
 import { generateAccessToken } from "./access-token.ts";
 
-Deno.test("generateAccessToken requests a client credentials token from the configured endpoint", async () => {
+test("generateAccessToken requests a client credentials token from the configured endpoint", async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   Object.defineProperty(globalThis, "fetch", {
@@ -45,7 +46,7 @@ Deno.test("generateAccessToken requests a client credentials token from the conf
   }
 });
 
-Deno.test("generateAccessToken rejects token responses without access token", async () => {
+test("generateAccessToken rejects token responses without access token", async () => {
   const originalFetch = globalThis.fetch;
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,
@@ -71,7 +72,7 @@ Deno.test("generateAccessToken rejects token responses without access token", as
   }
 });
 
-Deno.test("generateAccessToken retains original well-known discovery", async () => {
+test("generateAccessToken retains original well-known discovery", async () => {
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];
   Object.defineProperty(globalThis, "fetch", {
@@ -80,13 +81,15 @@ Deno.test("generateAccessToken retains original well-known discovery", async () 
       const url = input instanceof Request ? input.url : input.toString();
       calls.push(url);
       if (url === "https://cloud.example/.well-known") {
-        return Promise.resolve(Response.json({
-          auth: { issuer: "https://identity.example/realms/flamox" },
-        }));
+        return Promise.resolve(
+          Response.json({
+            auth: { issuer: "https://identity.example/realms/flamox" },
+          }),
+        );
       }
       if (
         url ===
-          "https://identity.example/realms/flamox/protocol/openid-connect/token"
+        "https://identity.example/realms/flamox/protocol/openid-connect/token"
       ) {
         return Promise.resolve(Response.json({ access_token: "discovered" }));
       }

@@ -17,11 +17,11 @@ export async function checkHealth(
 }
 
 export function readHealthPort(
-  value = Deno.env.get("EDGE_CONNECTOR_BIND_PORT") ?? "8080",
+  value = process.env["EDGE_CONNECTOR_BIND_PORT"] ?? "8080",
 ): number {
   return parseInt(value, 10);
 }
 
 if (import.meta.main) {
-  Deno.exit(await checkHealth());
+  process.exit(await checkHealth());
 }

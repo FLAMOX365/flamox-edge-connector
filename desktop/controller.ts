@@ -1,5 +1,8 @@
-import { dirname, join } from "@std/path";
-import type { JsonValue } from "../sdk/extension.ts";
+import { isNotFound } from "../runtime/files.ts";
+import { makeTempDirectory } from "../runtime/files.ts";
+import * as fs from "node:fs/promises";
+import { dirname, join } from "node:path";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import { loadConfig } from "../runtime/config.ts";
 import { ConnectorIdentityStore } from "../runtime/connector-identity.ts";
 import { ConnectorControlStateStore } from "../runtime/control-state.ts";
@@ -12,6 +15,7 @@ import { computeExtensionDigest } from "../runtime/extension-integrity.ts";
 import {
   InteractiveExtensionHostCapabilityProvider,
   NativeMessageBoxAdapter,
+  type MessageBoxAdapter,
 } from "../runtime/extension-host-capabilities.ts";
 import { parseExtensionConfiguration } from "../runtime/extension-manager.ts";
 import { parseExtensionGrant } from "../runtime/extension-policy.ts";
@@ -32,6 +36,11 @@ import type {
   PublisherKeyOutput,
 } from "./contracts.ts";
 
+export type DesktopOptions = {
+  readonly messageBox?: MessageBoxAdapter;
+  readonly onStateChanged?: () => void;
+};
+
 const maximumSettingsBytes = 2 * 1024 * 1024;
 const maximumBundleBytes = 150 * 1024 * 1024;
 
@@ -46,16 +55,19 @@ export class DesktopConnectorController {
   private constructor(
     private readonly settingsPath: string,
     settings: DesktopSettings,
+    private readonly options: DesktopOptions = {},
   ) {
     this.#settings = settings;
   }
 
   static async create(
     settingsPath = defaultSettingsPath(),
+    options: DesktopOptions = {},
   ): Promise<DesktopConnectorController> {
     const controller = new DesktopConnectorController(
       settingsPath,
       await readSettings(settingsPath),
+      options,
     );
     await controller.loadPersistentState();
     return controller;
@@ -72,11 +84,11 @@ export class DesktopConnectorController {
       settings: this.#settings,
       status: status
         ? {
-          connectionState: status.connectionState,
-          lastConnectedAt: date(status.lastConnectedAt),
-          lastInboundAt: date(status.lastInboundAt),
-          reconnectAttempt: status.reconnectAttempt,
-        }
+            connectionState: status.connectionState,
+            lastConnectedAt: date(status.lastConnectedAt),
+            lastInboundAt: date(status.lastInboundAt),
+            reconnectAttempt: status.reconnectAttempt,
+          }
         : null,
       managedConnection: this.#managedConnection,
       extensions: this.#persistedExtensions,
@@ -96,20 +108,20 @@ export class DesktopConnectorController {
   }
 
   private async persistSettings(): Promise<void> {
-    await Deno.mkdir(dirname(this.settingsPath), {
+    await fs.mkdir(dirname(this.settingsPath), {
       recursive: true,
       mode: 0o700,
     });
     const temporary = `${this.settingsPath}.tmp-${crypto.randomUUID()}`;
     try {
-      await Deno.writeTextFile(
+      await fs.writeFile(
         temporary,
         `${JSON.stringify(this.#settings, null, 2)}\n`,
-        { createNew: true, mode: 0o600 },
+        { flag: "wx", mode: 0o600 },
       );
-      await Deno.rename(temporary, this.settingsPath);
+      await fs.rename(temporary, this.settingsPath);
     } catch (error) {
-      await Deno.remove(temporary).catch(() => undefined);
+      await fs.rm(temporary).catch(() => undefined);
       throw error;
     }
   }
@@ -123,15 +135,15 @@ export class DesktopConnectorController {
     ).load();
     this.#managedConnection = identity
       ? {
-        connectorId: identity.connectorId,
-        tenantId: identity.tenantId,
-        pairedAt: identity.pairedAt,
-        lastSuccessfulSyncAt: null,
-        desiredRevision: control.desiredRevision,
-        commandSequence: control.commandSequence,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      }
+          connectorId: identity.connectorId,
+          tenantId: identity.tenantId,
+          pairedAt: identity.pairedAt,
+          lastSuccessfulSyncAt: null,
+          desiredRevision: control.desiredRevision,
+          commandSequence: control.commandSequence,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        }
       : null;
     this.#persistedExtensions = await new ExtensionStateStore(
       join(this.#settings.dataDirectory, "state", "extensions.json"),
@@ -140,11 +152,11 @@ export class DesktopConnectorController {
 
   async start(): Promise<DesktopState> {
     if (this.#host) return this.state();
-    await Deno.mkdir(this.#settings.dataDirectory, {
+    await fs.mkdir(this.#settings.dataDirectory, {
       recursive: true,
       mode: 0o700,
     });
-    await Deno.mkdir(this.#settings.functionsDirectory, {
+    await fs.mkdir(this.#settings.functionsDirectory, {
       recursive: true,
       mode: 0o700,
     });
@@ -152,8 +164,9 @@ export class DesktopConnectorController {
       loadConfig(toEnvironment(this.#settings)),
       this.logger(),
       {
+        onStateChanged: this.options.onStateChanged,
         hostCapabilities: new InteractiveExtensionHostCapabilityProvider(
-          new NativeMessageBoxAdapter(),
+          this.options.messageBox ?? new NativeMessageBoxAdapter(),
         ),
       },
     );
@@ -206,8 +219,8 @@ export class DesktopConnectorController {
     const bundle = parseExtensionBundle(
       JSON.parse(new TextDecoder().decode(input.bytes)),
     );
-    const source = await Deno.makeTempDir({ prefix: "edge-desktop-bundle-" });
-    await Deno.remove(source);
+    const source = await makeTempDirectory("edge-desktop-bundle-");
+    await fs.rmdir(source);
     try {
       await extractExtensionBundle(bundle, source);
       await host.bundle.extensionManager.install({
@@ -219,7 +232,7 @@ export class DesktopConnectorController {
         managementMode: "LOCAL",
       });
     } finally {
-      await Deno.remove(source, { recursive: true }).catch(() => undefined);
+      await fs.rm(source, { recursive: true }).catch(() => undefined);
     }
     this.log(
       "info",
@@ -336,14 +349,17 @@ export class DesktopConnectorController {
       this.#logs.splice(0, this.#logs.length - 1_000);
     }
     console[level](message);
+    this.options.onStateChanged?.();
   }
 }
 
 export function defaultSettingsPath(): string {
-  const base = Deno.env.get("APPDATA") ?? Deno.env.get("XDG_CONFIG_HOME") ??
-    (Deno.env.get("HOME")
-      ? join(Deno.env.get("HOME")!, ".config")
-      : Deno.cwd());
+  const base =
+    process.env["APPDATA"] ??
+    process.env["XDG_CONFIG_HOME"] ??
+    (process.env["HOME"]
+      ? join(process.env["HOME"]!, ".config")
+      : process.cwd());
   return join(base, "flamox-edge-connector-desktop", "settings.json");
 }
 
@@ -406,10 +422,13 @@ export function parseSettings(value: unknown): DesktopSettings {
       "",
       true,
     ),
-    logLevel: value.logLevel === "error" || value.logLevel === "warn" ||
-        value.logLevel === "info" || value.logLevel === "debug"
-      ? value.logLevel
-      : defaults.logLevel,
+    logLevel:
+      value.logLevel === "error" ||
+      value.logLevel === "warn" ||
+      value.logLevel === "info" ||
+      value.logLevel === "debug"
+        ? value.logLevel
+        : defaults.logLevel,
   };
   loadConfig(toEnvironment(result));
   return result;
@@ -417,13 +436,13 @@ export function parseSettings(value: unknown): DesktopSettings {
 
 async function readSettings(path: string): Promise<DesktopSettings> {
   try {
-    const info = await Deno.stat(path);
-    if (!info.isFile || info.size > maximumSettingsBytes) {
+    const info = await fs.stat(path);
+    if (!info.isFile() || info.size > maximumSettingsBytes) {
       throw new Error("Desktop settings file is too large.");
     }
-    return parseSettings(JSON.parse(await Deno.readTextFile(path)));
+    return parseSettings(JSON.parse(await fs.readFile(path, "utf8")));
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return defaultSettings();
+    if (isNotFound(error)) return defaultSettings();
     throw error;
   }
 }
@@ -477,7 +496,8 @@ function text(
 ): string {
   if (value === undefined) return fallback;
   if (
-    typeof value !== "string" || value.length > 16_384 ||
+    typeof value !== "string" ||
+    value.length > 16_384 ||
     (!empty && !value.trim())
   ) {
     throw new Error(`Desktop setting '${name}' is invalid.`);
@@ -492,7 +512,8 @@ function integer(
   maximum: number,
 ): number {
   if (
-    !Number.isSafeInteger(value) || Number(value) < minimum ||
+    !Number.isSafeInteger(value) ||
+    Number(value) < minimum ||
     Number(value) > maximum
   ) {
     throw new Error(`Desktop setting '${name}' is invalid.`);

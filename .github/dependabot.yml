@@ -1,6 +1,6 @@
 version: 2
 updates:
-  - package-ecosystem: deno
+  - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
@@ -8,7 +8,7 @@ updates:
       time: "05:00"
       timezone: Europe/Berlin
     groups:
-      deno-dependencies:
+      node-dependencies:
         patterns: ["*"]
 
   - package-ecosystem: github-actions
@@ -29,3 +29,8 @@ updates:
       day: monday
       time: "05:30"
       timezone: Europe/Berlin
+
+  - package-ecosystem: cargo
+    directory: /desktop/src-tauri
+    schedule:
+      interval: weekly

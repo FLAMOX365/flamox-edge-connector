@@ -16,9 +16,54 @@ cp ../../config/trusted-publishers.example.json config/trusted-publishers.json
 docker compose up --build -d
 ```
 
-The image runs as the non-root `deno` user. `/data` is the only writable durable
+The image runs as the non-root `node` user. `/data` is the only writable durable
 volume. The two optional local trust files are customer-owned safety overlays;
 an empty overlay denies managed extensions even when FLAMOX365 assigns them.
+
+## Extension isolation prerequisites
+
+Use Node.js 26.12.0 (`.node-version`), Yarn 4.18.1 and the locked TypeScript 7
+compiler. For a source service: `yarn install --immutable`, `yarn build`, then
+`yarn start`. TypeScript files are compiled before service startup. Node's
+native type stripping is used only for erasable build-tool scripts; operator
+Functions use an ESM loader with esbuild to retain enums and parameter properties.
+
+| Host | Required isolation support |
+| --- | --- |
+| macOS | Built-in `sandbox-exec`; Xcode command-line tools for linked-library discovery. The desktop sidecar uses the official standalone Node archive. |
+| Linux | `bubblewrap`, `socat`, and working unprivileged user/PID/network namespaces. AppArmor must permit those operations for the sandbox binaries. |
+| Windows | One elevated `yarn exec srt windows-install` from the installed checkout provisions the sandbox account and WFP fence. Upstream support is alpha. |
+
+Do not run the Windows provisioning command on every service start: it changes
+machine policy and rotates the sandbox account password. Missing prerequisites
+produce an extension activation error. The connector never relaxes enforcement
+or executes the package without isolation.
+
+The container installs Linux prerequisites and runs as `node`. Its host's
+seccomp/AppArmor profile must also allow the required nested namespaces. A
+successful image build is not proof that extension execution works under the
+operator's container policy. Run the isolation tests on the intended Linux
+host before deploying; do not default to a privileged container.
+
+## Replacing a historical runtime
+
+The manifest schema remains version 2; new packages declare
+`runtime.kind: "node-process"`. A signature covers this value and the compiled
+ESM bytes. Rebuild and re-sign extensions; never edit an existing signed bundle
+or reuse an immutable published release version.
+
+FLAMOX365 accepts historical `deno-worker` metadata for existing releases and
+installations, but accepts only `node-process` for newly uploaded artifacts.
+The Node connector refuses to execute historical packages. At startup an old
+active installation becomes `ERROR` / `EXTENSION_RESTORE_FAILED`; its package,
+configuration, identity and history are retained. Select an explicitly rebuilt
+Node release to recover. A rollback target must also be a Node release.
+
+Coordinate backend, connector and extension rollout. Before replacing the
+service, stop it and back up the complete data directory. A runtime downgrade
+requires the matching runtime-compatible release/state snapshot; a package
+signature alone does not make it executable by both runtimes. Human owners
+publish versions and deployments separately from this source migration.
 
 ## First pairing
 
@@ -74,16 +119,19 @@ Stop the service before using the offline CLI; the data-directory lock prevents
 concurrent mutation.
 
 ```bash
-deno task extensions list
-deno task extensions install-bundle extension.fmx grant.json configuration.json
-deno task extensions reconfigure extension.id configuration.json grant.json
-deno task extensions activate extension.id
-deno task extensions disable extension.id
-deno task extensions rollback extension.id
-deno task extensions uninstall extension.id
+yarn extensions list
+yarn extensions install-bundle extension.fmx grant.json configuration.json
+yarn extensions reconfigure extension.id configuration.json grant.json
+yarn extensions activate extension.id
+yarn extensions disable extension.id
+yarn extensions rollback extension.id
+yarn extensions uninstall extension.id
 ```
 
-These commands create `LOCAL` installations. FLAMOX365 Desired State manages
+These commands target `LOCAL` installations. The current host also checks the
+managed policy before the local overlay; without a managed rule, even an
+otherwise locally authorized offline installation is rejected. This existing
+limitation is tracked in [CR-0549](https://github.com/RueDeRennes/flamox/issues/653). FLAMOX365 Desired State manages
 only `MANAGED` installations and cannot take over a local extension with the
 same id.
 

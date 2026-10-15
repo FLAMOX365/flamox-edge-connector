@@ -1,65 +1,67 @@
 # Desktop test app
 
-The Deno Desktop project is an internal engineering and customer-test host. It
-is not the customer production distribution; production uses the service or
-container.
+The Tauri 2 application is an internal engineering and customer-test host. It
+starts the same Node.js 26 backend as the service and preserves the existing
+Runtime, Configuration, Extensions and Logs views.
 
 ## Start and build
 
+Install Node.js from `.node-version`, Yarn 4.18.1, Rust 1.99.0 and the
+[Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+Then run:
+
 ```bash
-deno task desktop:dev
-deno task desktop:build
+yarn install --immutable
+yarn desktop:dev
+yarn desktop:build
 ```
 
-The build task creates the platform artifact configured in `desktop/deno.json`.
-On macOS this is `desktop/dist/Edge Connector Desktop.app`.
+The build type-checks/compiles TypeScript 7, packages production dependencies,
+bundles the browser bridge and copies a standalone official Node sidecar.
+`tools/node-runtime.ts` verifies the downloaded archive against the official
+SHA-256 list and verifies its version. It does not ship a Homebrew binary with
+machine-specific shared-library links. Native artifacts are written below
+`desktop/src-tauri/target/release/bundle/`. Signing, notarization and publication
+belong to the human release owner.
 
-## Authentication assistance
+## Desktop boundary
 
-The Configuration tab collects the FLAMOX365 management URL, connector display
-name and one-time pairing code. **Save & pair connector** persists validated
-settings, creates the local RSA identity, consumes the code and starts managed
-reconciliation. After success the code is removed from Desktop settings.
+The webview invokes a small allowlisted Rust command surface. Rust owns the
+Node sidecar and exchanges bounded JSON messages over private process pipes;
+there is no localhost administration server. The webview cannot invoke a shell,
+launch arbitrary programs or choose a backend method outside the allowlist.
+File/folder pickers and message dialogs use Tauri's native dialog plugin.
+Extension message boxes remain capability-checked by the backend.
 
-The Runtime tab displays connector id, tenant id, persisted Desired State
-revision, last live synchronization and any managed error. Tenant pairing and
-installed extension state remain visible while the listener is stopped. No
-machine secret or private key is returned through the browser binding.
+Backend state changes push an invalidation through Rust to the webview, which
+reloads the affected desktop state. The UI does not poll. Local log entries,
+connection changes and managed synchronization also invalidate the view. Closing
+the app terminates the sidecar and its extension processes.
 
-## Native path selection
+## Pairing and extension tools
 
-Every configuration value that requires an operating-system path has a
-**Browse…** action. Data, Functions/YAML and customer package locations open a
-native directory chooser. Trusted-publisher and extension-policy settings open a
-native JSON file chooser. Existing `.fmx` and private-key uploads continue to
-use the webview's native file input because their bytes, rather than their local
-paths, are passed to the runtime.
+The Configuration tab accepts the FLAMOX365 management URL, display name and
+one-time pairing code. Pairing creates the local RSA identity, consumes the code
+and clears it from the persisted settings. Tenant identity and installed
+extension state remain visible while the listener is stopped; machine secrets
+and identity private keys never enter desktop state.
 
-Deno Desktop 2.9 does not yet expose a first-class file or folder dialog API.
-The Desktop backend therefore owns a narrow platform adapter that invokes only
-the native picker on macOS or Windows. Linux uses `zenity` and falls back to
-`kdialog`; one of those tools must be installed. Picker titles, initial paths
-and extension filters are passed as arguments or environment values rather than
-interpolated into executable scripts.
+The app can start/stop the connector, inspect logs, install/reconfigure/activate/
+disable/rollback/uninstall a local bundle and execute declared actions. Publisher
+tools generate an Ed25519 key pair, sign a package and produce `.fmx` bytes.
+Private publisher keys are offered locally as downloads rather than persisted
+in the desktop settings.
 
-## Runtime and extension testing
+## Local data and validation
 
-The app starts the exact same host as the service binary, including listener,
-Functions/YAML watcher, legacy WebSocket and managed agent. It can:
+Settings retain the existing user-configuration location and owner-only writes.
+Runtime identity and packages use the configured data directory. Stop the host
+before changing paths or operating on the same data from another process.
 
-- start, stop and refresh the runtime;
-- inspect logs and connection state;
-- show installed version, `LOCAL`/`MANAGED` ownership and lifecycle state;
-- install a local `.fmx`, reconfigure, activate, disable, rollback or uninstall;
-- invoke a declared action and inspect JSON output;
-- generate an Ed25519 publisher key pair, sign a package and pack `.fmx`.
-
-Private publisher keys are generated locally and offered as a file download.
-They are not saved into Desktop settings.
-
-## Local data
-
-Desktop settings default to the user's configuration directory and are written
-with owner-only permissions. Runtime identity, extension state and packages live
-under the separately configured data directory. Stop the runtime before changing
-those directories or operating on the same data with the CLI.
+For an isolated native run, use the executable with
+`--settings /absolute/path/to/test-settings.json`; configure fresh data and
+Functions directories in that file. This avoids loading an operator's real
+identity during a UI check. The compiled-backend IPC test verifies persistence,
+state invalidation, binary key transport and rejection of malformed operations.
+The extension isolation prerequisites in [Installation](INSTALLATION.md) apply
+to the desktop sidecar as well.

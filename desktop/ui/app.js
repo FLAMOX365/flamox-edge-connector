@@ -1,3 +1,4 @@
+import "./bridge.js";
 // @ts-check
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
@@ -17,16 +18,20 @@ const byId = (id) => {
 
 document.querySelectorAll(".tab").forEach((tab) =>
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((candidate) =>
-      candidate.classList.toggle("active", candidate === tab)
-    );
-    document.querySelectorAll(".panel").forEach((panel) =>
-      panel.classList.toggle(
-        "active",
-        panel.id === `panel-${tab.getAttribute("data-tab")}`,
-      )
-    );
-  })
+    document
+      .querySelectorAll(".tab")
+      .forEach((candidate) =>
+        candidate.classList.toggle("active", candidate === tab),
+      );
+    document
+      .querySelectorAll(".panel")
+      .forEach((panel) =>
+        panel.classList.toggle(
+          "active",
+          panel.id === `panel-${tab.getAttribute("data-tab")}`,
+        ),
+      );
+  }),
 );
 
 document.querySelectorAll("button[data-path-picker]").forEach((button) => {
@@ -37,21 +42,17 @@ document.querySelectorAll("button[data-path-picker]").forEach((button) => {
 byId("refresh").addEventListener("click", refresh);
 byId("refresh-extensions").addEventListener("click", refresh);
 byId("refresh-logs").addEventListener("click", refresh);
-byId("start").addEventListener(
-  "click",
-  () => mutate(() => bindings.startConnector(), "Connector started."),
+byId("start").addEventListener("click", () =>
+  mutate(() => bindings.startConnector(), "Connector started."),
 );
-byId("stop").addEventListener(
-  "click",
-  () => mutate(() => bindings.stopConnector(), "Connector stopped."),
+byId("stop").addEventListener("click", () =>
+  mutate(() => bindings.stopConnector(), "Connector stopped."),
 );
-byId("clear-logs").addEventListener(
-  "click",
-  () => mutate(() => bindings.clearLogs(), "Logs cleared."),
+byId("clear-logs").addEventListener("click", () =>
+  mutate(() => bindings.clearLogs(), "Logs cleared."),
 );
-byId("cancel-action").addEventListener(
-  "click",
-  () => byId("action-form").classList.add("hidden"),
+byId("cancel-action").addEventListener("click", () =>
+  byId("action-form").classList.add("hidden"),
 );
 byId("connect-managed").addEventListener("click", async () => {
   await mutate(
@@ -134,8 +135,8 @@ byId("sign-form").addEventListener("submit", async (event) => {
 byId("pack-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const source =
-      /** @type {HTMLInputElement} */ (byId("pack-directory")).value;
+    const source = /** @type {HTMLInputElement} */ (byId("pack-directory"))
+      .value;
     const release = parseJson(
       /** @type {HTMLTextAreaElement} */ (byId("pack-release")).value,
       "release",
@@ -158,13 +159,15 @@ byId("action-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     const output = await bindings.executeAction({
-      extensionId:
-        /** @type {HTMLInputElement} */ (byId("action-extension")).value,
+      extensionId: /** @type {HTMLInputElement} */ (byId("action-extension"))
+        .value,
       action: /** @type {HTMLInputElement} */ (byId("action-name")).value,
-      input: /** @type {import('../contracts.ts').JsonValue} */ (parseJson(
-        /** @type {HTMLTextAreaElement} */ (byId("action-input")).value,
-        "action input",
-      )),
+      input: /** @type {import('../contracts.ts').JsonValue} */ (
+        parseJson(
+          /** @type {HTMLTextAreaElement} */ (byId("action-input")).value,
+          "action input",
+        )
+      ),
     });
     byId("action-output").textContent = JSON.stringify(output, null, 2);
   } catch (error) {
@@ -196,7 +199,8 @@ async function pickPath(button) {
   try {
     const selected = await bindings.choosePath({
       kind,
-      title: button.dataset.pathTitle ??
+      title:
+        button.dataset.pathTitle ??
         (kind === "directory" ? "Choose directory" : "Choose file"),
       initialPath: input.value,
       extensions: (button.dataset.pathExtensions ?? "")
@@ -245,7 +249,9 @@ function render(state) {
   byId("extension-count").textContent = String(state.extensions.length);
   const managed = state.managedConnection;
   byId("pairing-state").textContent = managed
-    ? state.running ? "Paired · running" : "Paired · stopped"
+    ? state.running
+      ? "Paired · running"
+      : "Paired · stopped"
     : "Not paired";
   byId("pairing-state").classList.toggle("error", !managed && state.running);
   byId("connector-id").textContent = managed?.connectorId ?? "—";
@@ -258,9 +264,9 @@ function render(state) {
   byId("managed-error").classList.toggle("hidden", !managed?.lastErrorMessage);
   /** @type {HTMLButtonElement} */ (byId("start")).disabled = state.running;
   /** @type {HTMLButtonElement} */ (byId("stop")).disabled = !state.running;
-  /** @type {HTMLButtonElement} */ (byId("settings-form").querySelector(
-    'button[type="submit"]',
-  )).disabled = state.running;
+  /** @type {HTMLButtonElement} */ (
+    byId("settings-form").querySelector('button[type="submit"]')
+  ).disabled = state.running;
   fillSettings(state.settings);
   renderExtensions(state.extensions);
   renderLogs(state.logs);
@@ -286,9 +292,9 @@ function settingsFromForm() {
 function fillSettings(settings) {
   const form = /** @type {HTMLFormElement} */ (byId("settings-form"));
   for (const [key, value] of Object.entries(settings)) {
-    const control =
-      /** @type {HTMLInputElement | HTMLSelectElement | null} */ (form.elements
-        .namedItem(key));
+    const control = /** @type {HTMLInputElement | HTMLSelectElement | null} */ (
+      form.elements.namedItem(key)
+    );
     if (!control || document.activeElement === control) continue;
     if (control instanceof HTMLInputElement && control.type === "checkbox") {
       control.checked = value === true;
@@ -317,39 +323,33 @@ function renderExtensions(extensions) {
     status.className = `status ${extension.status === "ERROR" ? "error" : ""}`;
     status.textContent = String(extension.status);
     const meta = document.createElement("small");
-    meta.textContent = `${extension.managementMode} · installed ${
-      new Date(String(extension.installedAt)).toLocaleString()
-    }`;
+    meta.textContent = `${extension.managementMode} · installed ${new Date(
+      String(extension.installedAt),
+    ).toLocaleString()}`;
     details.append(title, status, meta);
     const actions = document.createElement("div");
     actions.className = "button-row";
     actions.append(
-      actionButton(
-        extension.status === "ACTIVE" ? "Disable" : "Activate",
-        () =>
-          mutate(
-            () =>
-              extension.status === "ACTIVE"
-                ? bindings.disableExtension(String(extension.extensionId))
-                : bindings.activateExtension(String(extension.extensionId)),
-            "Extension state changed.",
-          ),
+      actionButton(extension.status === "ACTIVE" ? "Disable" : "Activate", () =>
+        mutate(
+          () =>
+            extension.status === "ACTIVE"
+              ? bindings.disableExtension(String(extension.extensionId))
+              : bindings.activateExtension(String(extension.extensionId)),
+          "Extension state changed.",
+        ),
       ),
-      actionButton(
-        "Reconfigure",
-        () => reconfigure(String(extension.extensionId), extension),
+      actionButton("Reconfigure", () =>
+        reconfigure(String(extension.extensionId), extension),
       ),
-      actionButton(
-        "Run action",
-        () => openAction(String(extension.extensionId)),
+      actionButton("Run action", () =>
+        openAction(String(extension.extensionId)),
       ),
-      actionButton(
-        "Rollback",
-        () =>
-          mutate(
-            () => bindings.rollbackExtension(String(extension.extensionId)),
-            "Extension rolled back.",
-          ),
+      actionButton("Rollback", () =>
+        mutate(
+          () => bindings.rollbackExtension(String(extension.extensionId)),
+          "Extension rolled back.",
+        ),
       ),
       actionButton(
         "Uninstall",
@@ -415,13 +415,11 @@ function renderLogs(logs) {
   for (const entry of logs) {
     const row = document.createElement("div");
     row.className = `log ${entry.level}`;
-    for (
-      const text of [
-        new Date(entry.at).toLocaleString(),
-        entry.level.toUpperCase(),
-        entry.message,
-      ]
-    ) {
+    for (const text of [
+      new Date(entry.at).toLocaleString(),
+      entry.level.toUpperCase(),
+      entry.message,
+    ]) {
       const span = document.createElement("span");
       span.textContent = text;
       row.append(span);
@@ -453,16 +451,17 @@ function download(bytes, filename, type) {
 }
 /** @param {boolean} value */
 function setBusy(value) {
-  document.querySelectorAll("button").forEach((button) =>
-    button.disabled = value
-  );
+  document
+    .querySelectorAll("button")
+    .forEach((button) => (button.disabled = value));
   if (!value && currentState) render(currentState);
 }
 /** @param {unknown} error */
 function showError(error) {
-  const message = error && typeof error === "object" && "message" in error
-    ? String(error.message)
-    : String(error);
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String(error.message)
+      : String(error);
   byId("runtime-error").textContent = message;
   byId("runtime-error").classList.remove("hidden");
   showToast(message, true);
@@ -477,7 +476,7 @@ function showToast(message, error = false) {
   toastTimer = setTimeout(() => toast.classList.add("hidden"), 4000);
 }
 
+globalThis.addEventListener("connector-state-changed", () => {
+  void refresh();
+});
 await refresh();
-setInterval(() => {
-  if (currentState?.running) refresh();
-}, 2000);

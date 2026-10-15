@@ -7,7 +7,7 @@
  */
 
 // Intentional duplicate handler registration error
-import { http } from "@flamox/edge-connector-sdk";
+import { http } from "@edge-connector/sdk";
 
 export default http()
   .get(() => new Response("first"))

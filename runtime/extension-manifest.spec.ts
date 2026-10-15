@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../test/assert.ts";
 import { parseExtensionManifest } from "./extension-manifest.ts";
 
 const validManifest = () => ({
@@ -8,7 +9,7 @@ const validManifest = () => ({
   description: "Reports a minimal connector diagnostic response.",
   publisher: "FLAMOX365",
   version: "1.0.0",
-  runtime: { kind: "deno-worker", entrypoint: "extension.ts" },
+  runtime: { kind: "node-process", entrypoint: "extension.ts" },
   capabilities: ["system.diagnostics.read"],
   permissions: { network: [], secrets: [] },
   actions: [{ name: "status", idempotent: true, timeoutSeconds: 5 }],
@@ -16,7 +17,7 @@ const validManifest = () => ({
   health: { action: "status", timeoutSeconds: 5 },
 });
 
-Deno.test("parseExtensionManifest returns a normalized strict manifest", () => {
+test("parseExtensionManifest returns a normalized strict manifest", () => {
   const manifest = parseExtensionManifest(validManifest());
 
   assertEquals(manifest.id, "system.diagnostics");
@@ -25,13 +26,13 @@ Deno.test("parseExtensionManifest returns a normalized strict manifest", () => {
   assertEquals(manifest.contributions, []);
 });
 
-Deno.test("parseExtensionManifest keeps Area contributions optional for generic extensions", () => {
+test("parseExtensionManifest keeps Area contributions optional for generic extensions", () => {
   const generic = validManifest();
   delete (generic as { contributions?: unknown }).contributions;
   assertEquals(parseExtensionManifest(generic).contributions, []);
 });
 
-Deno.test("parseExtensionManifest validates an opted-in telephony provider contract", () => {
+test("parseExtensionManifest validates an opted-in telephony provider contract", () => {
   const actions = [
     { name: "dial", idempotent: false, timeoutSeconds: 30 },
     { name: "hangup", idempotent: true, timeoutSeconds: 30 },
@@ -48,18 +49,20 @@ Deno.test("parseExtensionManifest validates an opted-in telephony provider contr
     ],
     actions,
     health: { action: "health", timeoutSeconds: 30 },
-    contributions: [{
-      id: "provider",
-      area: "telephony",
-      contract: "telephony.provider",
-      contractVersion: 1,
-      operations: {
-        startCall: "dial",
-        endCall: "hangup",
-        synchronizeCalls: "list-calls",
-        health: "health",
+    contributions: [
+      {
+        id: "provider",
+        area: "telephony",
+        contract: "telephony.provider",
+        contractVersion: 1,
+        operations: {
+          startCall: "dial",
+          endCall: "hangup",
+          synchronizeCalls: "list-calls",
+          health: "health",
+        },
       },
-    }],
+    ],
   };
   assertEquals(parseExtensionManifest(manifest).contributions.length, 1);
   assertThrows(
@@ -67,7 +70,7 @@ Deno.test("parseExtensionManifest validates an opted-in telephony provider contr
       parseExtensionManifest({
         ...manifest,
         actions: actions.map((action) =>
-          action.name === "dial" ? { ...action, idempotent: true } : action
+          action.name === "dial" ? { ...action, idempotent: true } : action,
         ),
       }),
     Error,
@@ -75,7 +78,7 @@ Deno.test("parseExtensionManifest validates an opted-in telephony provider contr
   );
 });
 
-Deno.test("parseExtensionManifest rejects unknown fields and unsafe paths", () => {
+test("parseExtensionManifest rejects unknown fields and unsafe paths", () => {
   assertThrows(
     () => parseExtensionManifest({ ...validManifest(), arbitrary: true }),
     Error,
@@ -85,14 +88,14 @@ Deno.test("parseExtensionManifest rejects unknown fields and unsafe paths", () =
     () =>
       parseExtensionManifest({
         ...validManifest(),
-        runtime: { kind: "deno-worker", entrypoint: "../escape.ts" },
+        runtime: { kind: "node-process", entrypoint: "../escape.ts" },
       }),
     Error,
     "safe relative path",
   );
 });
 
-Deno.test("parseExtensionManifest rejects duplicate actions and undeclared health actions", () => {
+test("parseExtensionManifest rejects duplicate actions and undeclared health actions", () => {
   assertThrows(
     () =>
       parseExtensionManifest({
@@ -116,7 +119,7 @@ Deno.test("parseExtensionManifest rejects duplicate actions and undeclared healt
   );
 });
 
-Deno.test("parseExtensionManifest requires exact network targets and secret names", () => {
+test("parseExtensionManifest requires exact network targets and secret names", () => {
   assertThrows(
     () =>
       parseExtensionManifest({

@@ -1,4 +1,4 @@
-import type { JsonValue } from "../sdk/extension.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { EncryptedConnectorSecret } from "./connector-identity.ts";
 import type { ExtensionGrant } from "./extension-policy.ts";
 
@@ -46,9 +46,12 @@ export function parseDesiredState(value: unknown): ConnectorDesiredState {
     "extensions",
   ]);
   if (
-    root.schemaVersion !== 1 || !Number.isSafeInteger(root.revision) ||
-    Number(root.revision) < 0 || !Array.isArray(root.extensions)
-  ) invalid("Desired State");
+    root.schemaVersion !== 1 ||
+    !Number.isSafeInteger(root.revision) ||
+    Number(root.revision) < 0 ||
+    !Array.isArray(root.extensions)
+  )
+    invalid("Desired State");
   const ids = new Set<string>();
   const extensions = root.extensions.map((nested, index) => {
     const extension = record(nested, `Desired extension ${index}`);
@@ -61,27 +64,34 @@ export function parseDesiredState(value: unknown): ConnectorDesiredState {
     if (ids.has(extensionId)) invalid("Desired State duplicate extension");
     ids.add(extensionId);
     if (
-      extension.status !== "ACTIVE" && extension.status !== "DISABLED" &&
+      extension.status !== "ACTIVE" &&
+      extension.status !== "DISABLED" &&
       extension.status !== "ABSENT"
-    ) invalid("Desired extension status");
+    )
+      invalid("Desired extension status");
     const secrets = parseEncryptedSecrets(extension.secrets);
     if (extension.status === "ABSENT") {
       if (
-        extension.version !== undefined || extension.bundleUrl !== undefined ||
+        extension.version !== undefined ||
+        extension.bundleUrl !== undefined ||
         extension.grant !== undefined ||
         extension.configuration !== undefined ||
         Object.keys(secrets).length > 0
-      ) invalid("Absent desired extension");
+      )
+        invalid("Absent desired extension");
       return { extensionId, status: "ABSENT" as const, secrets };
     }
     if (
       typeof extension.version !== "string" ||
       !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(
         extension.version,
-      ) || typeof extension.bundleUrl !== "string" ||
-      !isRecord(extension.grant) || !isRecord(extension.configuration) ||
+      ) ||
+      typeof extension.bundleUrl !== "string" ||
+      !isRecord(extension.grant) ||
+      !isRecord(extension.configuration) ||
       !isJsonRecord(extension.configuration)
-    ) invalid("Desired extension");
+    )
+      invalid("Desired extension");
     return {
       extensionId,
       version: extension.version,
@@ -122,7 +132,8 @@ export function parseCommandBatch(value: unknown): ConnectorCommandBatch {
       !Number.isSafeInteger(command.sequence) ||
       Number(command.sequence) <= previousSequence ||
       !isJsonValue(command.input)
-    ) invalid(`Command ${index}`);
+    )
+      invalid(`Command ${index}`);
     previousSequence = Number(command.sequence);
     const expiresAt = text(command.expiresAt, "expiresAt", 100);
     if (Number.isNaN(Date.parse(expiresAt))) invalid(`Command ${index}`);
@@ -158,8 +169,10 @@ function parseEncryptedSecrets(
     exactKeys(envelope, ["algorithm", "ciphertext"]);
     if (
       envelope.algorithm !== "RSA-OAEP-256" ||
-      typeof envelope.ciphertext !== "string" || !envelope.ciphertext
-    ) invalid(`Secret '${name}'`);
+      typeof envelope.ciphertext !== "string" ||
+      !envelope.ciphertext
+    )
+      invalid(`Secret '${name}'`);
     result[name] = {
       algorithm: "RSA-OAEP-256",
       ciphertext: envelope.ciphertext,
@@ -170,7 +183,8 @@ function parseEncryptedSecrets(
 
 function stringArray(value: unknown): readonly string[] {
   if (
-    !Array.isArray(value) || value.some((nested) => typeof nested !== "string")
+    !Array.isArray(value) ||
+    value.some((nested) => typeof nested !== "string")
   ) {
     invalid("String array");
   }
@@ -186,9 +200,8 @@ function identifier(value: unknown, label: string): string {
 }
 
 function text(value: unknown, label: string, maximum: number): string {
-  if (
-    typeof value !== "string" || value.length === 0 || value.length > maximum
-  ) invalid(label);
+  if (typeof value !== "string" || value.length === 0 || value.length > maximum)
+    invalid(label);
   return value;
 }
 
@@ -199,9 +212,8 @@ function isJsonRecord(
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null || typeof value === "string" || typeof value === "boolean"
-  ) return true;
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
   return isRecord(value) && isJsonRecord(value);
@@ -216,7 +228,8 @@ function exactKeys(
   if (
     required.some((key) => !Object.hasOwn(value, key)) ||
     Object.keys(value).some((key) => !allowed.has(key))
-  ) invalid("Object");
+  )
+    invalid("Object");
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

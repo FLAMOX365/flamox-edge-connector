@@ -1,12 +1,13 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../test/assert.ts";
 import { checkHealth, readHealthPort } from "./health-check.ts";
 
-Deno.test("readHealthPort uses the default connector port", () => {
+test("readHealthPort uses the default connector port", () => {
   assertEquals(readHealthPort(undefined), 8080);
   assertEquals(readHealthPort("9090"), 9090);
 });
 
-Deno.test("checkHealth returns success for healthy responses", async () => {
+test("checkHealth returns success for healthy responses", async () => {
   const exitCode = await checkHealth(9090, (input) => {
     assertEquals(input, "http://localhost:9090/health");
     return Promise.resolve(new Response("ok", { status: 200 }));
@@ -15,11 +16,10 @@ Deno.test("checkHealth returns success for healthy responses", async () => {
   assertEquals(exitCode, 0);
 });
 
-Deno.test("checkHealth returns failure for unhealthy responses and fetch errors", async () => {
+test("checkHealth returns failure for unhealthy responses and fetch errors", async () => {
   assertEquals(
-    await checkHealth(
-      9090,
-      () => Promise.resolve(new Response("down", { status: 503 })),
+    await checkHealth(9090, () =>
+      Promise.resolve(new Response("down", { status: 503 })),
     ),
     1,
   );

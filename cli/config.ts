@@ -1,4 +1,7 @@
-import { dirname, join } from "@std/path";
+import { environmentSnapshot } from "../runtime/environment.ts";
+import { isNotFound } from "../runtime/files.ts";
+import * as fs from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { generatePublisherKey } from "../runtime/extension-publisher.ts";
 
 export type CliConfig = {
@@ -17,20 +20,20 @@ export type CliConfig = {
 };
 
 export function defaultCliDirectory(
-  environment: Record<string, string | undefined> = Deno.env.toObject(),
+  environment: Record<string, string | undefined> = environmentSnapshot(),
 ): string {
   if (environment.EDGE_EXTENSION_CLI_HOME?.trim()) {
     return environment.EDGE_EXTENSION_CLI_HOME.trim();
   }
-  const base = environment.APPDATA ?? environment.XDG_CONFIG_HOME ??
-    (environment.HOME ? join(environment.HOME, ".config") : Deno.cwd());
+  const base =
+    environment.APPDATA ??
+    environment.XDG_CONFIG_HOME ??
+    (environment.HOME ? join(environment.HOME, ".config") : process.cwd());
   return join(base, "edge-extension-cli");
 }
 
 export class CliConfigStore {
-  constructor(
-    readonly directory = defaultCliDirectory(),
-  ) {}
+  constructor(readonly directory = defaultCliDirectory()) {}
 
   get path(): string {
     return join(this.directory, "config.json");
@@ -38,9 +41,9 @@ export class CliConfigStore {
 
   async load(): Promise<CliConfig> {
     try {
-      return parseCliConfig(JSON.parse(await Deno.readTextFile(this.path)));
+      return parseCliConfig(JSON.parse(await fs.readFile(this.path, "utf8")));
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) {
+      if (isNotFound(error)) {
         return { schemaVersion: 1 };
       }
       throw new Error(`Unable to read CLI configuration '${this.path}'.`, {
@@ -51,25 +54,21 @@ export class CliConfigStore {
 
   async save(config: CliConfig): Promise<void> {
     const parsed = parseCliConfig(config);
-    await Deno.mkdir(this.directory, { recursive: true, mode: 0o700 });
+    await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.tmp-${crypto.randomUUID()}`;
     try {
-      await Deno.writeTextFile(
-        temporary,
-        `${JSON.stringify(parsed, null, 2)}\n`,
-        { createNew: true, mode: 0o600 },
-      );
-      await Deno.rename(temporary, this.path);
+      await fs.writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await fs.rename(temporary, this.path);
     } catch (error) {
-      await Deno.remove(temporary).catch(() => undefined);
+      await fs.rm(temporary).catch(() => undefined);
       throw error;
     }
   }
 
-  async initializePublisher(
-    name: string,
-    keyId: string,
-  ): Promise<CliConfig> {
+  async initializePublisher(name: string, keyId: string): Promise<CliConfig> {
     const current = await this.load();
     if (current.publisher) {
       throw new Error(
@@ -80,7 +79,7 @@ export class CliConfigStore {
     const keyDirectory = join(this.directory, "publishers");
     const privateKeyPath = join(keyDirectory, `${safeFileName(keyId)}.jwk`);
     const trustPath = join(keyDirectory, `${safeFileName(keyId)}.public.json`);
-    await Deno.mkdir(dirname(privateKeyPath), {
+    await fs.mkdir(dirname(privateKeyPath), {
       recursive: true,
       mode: 0o700,
     });
@@ -94,8 +93,8 @@ export class CliConfigStore {
       await this.save(next);
       return next;
     } catch (error) {
-      await Deno.remove(privateKeyPath).catch(() => undefined);
-      await Deno.remove(trustPath).catch(() => undefined);
+      await fs.rm(privateKeyPath).catch(() => undefined);
+      await fs.rm(trustPath).catch(() => undefined);
       throw error;
     }
   }
@@ -105,8 +104,8 @@ export function parseCliConfig(value: unknown): CliConfig {
   if (!isRecord(value) || value.schemaVersion !== 1) invalidConfig();
   const rootKeys = Object.keys(value);
   if (
-    rootKeys.some((key) =>
-      !["schemaVersion", "publisher", "cloud"].includes(key)
+    rootKeys.some(
+      (key) => !["schemaVersion", "publisher", "cloud"].includes(key),
     )
   ) {
     invalidConfig();
@@ -115,10 +114,12 @@ export function parseCliConfig(value: unknown): CliConfig {
   if (value.publisher !== undefined) {
     if (
       !isRecord(value.publisher) ||
-      Object.keys(value.publisher).some((key) =>
-        !["name", "keyId", "privateKeyPath", "trustPath"].includes(key)
+      Object.keys(value.publisher).some(
+        (key) =>
+          !["name", "keyId", "privateKeyPath", "trustPath"].includes(key),
       )
-    ) invalidConfig();
+    )
+      invalidConfig();
     publisher = {
       name: text(value.publisher.name),
       keyId: text(value.publisher.keyId),
@@ -130,10 +131,11 @@ export function parseCliConfig(value: unknown): CliConfig {
   if (value.cloud !== undefined) {
     if (
       !isRecord(value.cloud) ||
-      Object.keys(value.cloud).some((key) =>
-        !["url", "accessToken", "scope"].includes(key)
+      Object.keys(value.cloud).some(
+        (key) => !["url", "accessToken", "scope"].includes(key),
       )
-    ) invalidConfig();
+    )
+      invalidConfig();
     let url: URL;
     try {
       url = new URL(text(value.cloud.url));
@@ -141,7 +143,8 @@ export function parseCliConfig(value: unknown): CliConfig {
       invalidConfig();
     }
     if (
-      url.protocol !== "https:" && url.hostname !== "localhost" &&
+      url.protocol !== "https:" &&
+      url.hostname !== "localhost" &&
       url.hostname !== "127.0.0.1"
     ) {
       throw new Error("FLAMOX365 Cloud URL must use HTTPS outside localhost.");
@@ -151,9 +154,10 @@ export function parseCliConfig(value: unknown): CliConfig {
     }
     cloud = {
       url: url.toString().replace(/\/$/u, ""),
-      accessToken: value.cloud.accessToken === undefined
-        ? undefined
-        : text(value.cloud.accessToken),
+      accessToken:
+        value.cloud.accessToken === undefined
+          ? undefined
+          : text(value.cloud.accessToken),
       scope: value.cloud.scope,
     };
   }
@@ -161,8 +165,8 @@ export function parseCliConfig(value: unknown): CliConfig {
 }
 
 async function writeNewJson(path: string, value: unknown): Promise<void> {
-  await Deno.writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`, {
-    createNew: true,
+  await fs.writeFile(path, `${JSON.stringify(value, null, 2)}\n`, {
+    flag: "wx",
     mode: 0o600,
   });
 }

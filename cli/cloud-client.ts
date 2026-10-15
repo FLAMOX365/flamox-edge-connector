@@ -42,9 +42,8 @@ export class CloudClient {
     ) {
       throw new Error("Publisher trust does not match the signed bundle.");
     }
-    const root = this.scope === "system"
-      ? "/api/v1/system/edge/store"
-      : "/api/v1/edge";
+    const root =
+      this.scope === "system" ? "/api/v1/system/edge/store" : "/api/v1/edge";
     await this.json(`${root}/publishers`, {
       publisher: trust.publisher,
       keyId: trust.keyId,
@@ -58,14 +57,11 @@ export class CloudClient {
       }),
       `${manifest.id}-${manifest.version}.fmx`,
     );
-    const response = await this.request(
-      `${this.baseUrl}${root}/releases`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${this.accessToken}` },
-        body: form,
-      },
-    );
+    const response = await this.request(`${this.baseUrl}${root}/releases`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.accessToken}` },
+      body: form,
+    });
     const release = await responseData(response, "release upload");
     if (
       typeof release.id !== "string" ||
@@ -111,9 +107,7 @@ async function responseData(
     );
   }
   const value: unknown = await response.json();
-  if (
-    !isRecord(value) || value.success !== true || !isRecord(value.data)
-  ) {
+  if (!isRecord(value) || value.success !== true || !isRecord(value.data)) {
     throw new Error(`FLAMOX365 returned an invalid response for ${operation}.`);
   }
   return value.data;
@@ -126,8 +120,8 @@ function manifestFrom(bundle: ExtensionBundle): {
   readonly description: string;
   readonly publisher: string;
 } {
-  const manifestFile = bundle.files.find((file) =>
-    file.path === "extension-manifest.json"
+  const manifestFile = bundle.files.find(
+    (file) => file.path === "extension-manifest.json",
   );
   if (!manifestFile) {
     throw new Error("Extension bundle does not contain its manifest.");
@@ -168,10 +162,7 @@ function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
       cause: error,
     });
   }
-  return Uint8Array.from(
-    binary,
-    (character) => character.charCodeAt(0),
-  );
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -8,7 +8,7 @@
  * - limit: Maximum number of results (default: 100)
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 interface AdGroup {
   sAMAccountName: string;
@@ -52,7 +52,7 @@ export default defineHttp({
     url.searchParams.set("limit", limit);
 
     const headers: HeadersInit = {
-      "Accept": "application/json",
+      Accept: "application/json",
       "X-Request-Id": ctx.requestId,
     };
 
@@ -72,7 +72,7 @@ export default defineHttp({
         return ctx.res.error(response.status, `Bridge error: ${errorText}`);
       }
 
-      const data = await response.json() as { groups: AdGroup[] };
+      const data = (await response.json()) as { groups: AdGroup[] };
       const groups = data.groups.map(normalizeGroup);
 
       return ctx.res.ok().json({

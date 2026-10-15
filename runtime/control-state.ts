@@ -1,3 +1,5 @@
+import { isNotFound } from "./files.ts";
+import * as fs from "node:fs/promises";
 export type ConnectorControlState = {
   readonly schemaVersion: 1;
   readonly desiredRevision: number;
@@ -9,9 +11,9 @@ export class ConnectorControlStateStore {
 
   async load(): Promise<ConnectorControlState> {
     try {
-      const info = await Deno.stat(this.path);
-      if (!info.isFile || info.size > 64 * 1024) invalid();
-      const parsed: unknown = JSON.parse(await Deno.readTextFile(this.path));
+      const info = await fs.stat(this.path);
+      if (!info.isFile() || info.size > 64 * 1024) invalid();
+      const parsed: unknown = JSON.parse(await fs.readFile(this.path, "utf8"));
       if (!isRecord(parsed)) invalid();
       if (
         parsed.schemaVersion !== 1 ||
@@ -19,14 +21,15 @@ export class ConnectorControlStateStore {
         Number(parsed.desiredRevision) < 0 ||
         !Number.isSafeInteger(parsed.commandSequence) ||
         Number(parsed.commandSequence) < 0
-      ) invalid();
+      )
+        invalid();
       return {
         schemaVersion: 1,
         desiredRevision: Number(parsed.desiredRevision),
         commandSequence: Number(parsed.commandSequence),
       };
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) {
+      if (isNotFound(error)) {
         return { schemaVersion: 1, desiredRevision: 0, commandSequence: 0 };
       }
       throw error;
@@ -39,17 +42,16 @@ export class ConnectorControlStateStore {
       this.path.lastIndexOf("\\"),
     );
     const directory = slash < 0 ? "." : this.path.slice(0, slash);
-    await Deno.mkdir(directory, { recursive: true, mode: 0o700 });
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.tmp-${crypto.randomUUID()}`;
     try {
-      await Deno.writeTextFile(
-        temporary,
-        `${JSON.stringify(state)}\n`,
-        { createNew: true, mode: 0o600 },
-      );
-      await Deno.rename(temporary, this.path);
+      await fs.writeFile(temporary, `${JSON.stringify(state)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await fs.rename(temporary, this.path);
     } catch (error) {
-      await Deno.remove(temporary).catch(() => undefined);
+      await fs.rm(temporary).catch(() => undefined);
       throw error;
     }
   }

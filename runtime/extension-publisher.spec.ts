@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals, assertRejects } from "../test/assert.ts";
 import { Ed25519ExtensionReleaseVerifier } from "./extension-integrity.ts";
 import { readExtensionManifest } from "./extension-manifest.ts";
 import {
@@ -6,7 +9,7 @@ import {
   signExtensionRelease,
 } from "./extension-publisher.ts";
 
-Deno.test("publisher tooling creates a release accepted by the runtime verifier", async () => {
+test("publisher tooling creates a release accepted by the runtime verifier", async () => {
   const directory = await extensionDirectory();
   try {
     const keys = await generatePublisherKey("Example GmbH", "example-2026");
@@ -23,11 +26,11 @@ Deno.test("publisher tooling creates a release accepted by the runtime verifier"
     assertEquals(release.extensionId, "example.echo");
     assertEquals(release.publisher, "Example GmbH");
   } finally {
-    await Deno.remove(directory, { recursive: true });
+    await fs.rm(directory, { recursive: true });
   }
 });
 
-Deno.test("publisher tooling never accepts a public key for signing", async () => {
+test("publisher tooling never accepts a public key for signing", async () => {
   const directory = await extensionDirectory();
   try {
     const keys = await generatePublisherKey("Example GmbH", "example-2026");
@@ -42,13 +45,13 @@ Deno.test("publisher tooling never accepts a public key for signing", async () =
       "private JWK",
     );
   } finally {
-    await Deno.remove(directory, { recursive: true });
+    await fs.rm(directory, { recursive: true });
   }
 });
 
 async function extensionDirectory(): Promise<string> {
-  const directory = await Deno.makeTempDir();
-  await Deno.writeTextFile(
+  const directory = await makeTempDirectory();
+  await fs.writeFile(
     `${directory}/extension-manifest.json`,
     JSON.stringify({
       schemaVersion: 2,
@@ -57,18 +60,20 @@ async function extensionDirectory(): Promise<string> {
       description: "Returns its input.",
       publisher: "Example GmbH",
       version: "1.0.0",
-      runtime: { kind: "deno-worker", entrypoint: "main.ts" },
+      runtime: { kind: "node-process", entrypoint: "main.ts" },
       capabilities: [],
       permissions: { network: [], configuredNetwork: [], secrets: [] },
-      actions: [{
-        name: "echo",
-        idempotent: true,
-        timeoutSeconds: 10,
-      }],
+      actions: [
+        {
+          name: "echo",
+          idempotent: true,
+          timeoutSeconds: 10,
+        },
+      ],
       translations: {},
     }),
   );
-  await Deno.writeTextFile(
+  await fs.writeFile(
     `${directory}/main.ts`,
     "export default { echo: (input: unknown) => input };\n",
   );

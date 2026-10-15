@@ -1,0 +1,59 @@
+{
+  "name": "@edge-connector/host",
+  "private": true,
+  "type": "module",
+  "packageManager": "yarn@4.18.1",
+  "engines": {
+    "node": ">=26.0.0 <27"
+  },
+  "workspaces": [
+    "sdk",
+    "templates/starter",
+    "templates/extension",
+    "templates/examples/*"
+  ],
+  "bin": {
+    "extension": "./dist/cli/main.js"
+  },
+  "scripts": {
+    "build": "yarn workspace @edge-connector/sdk build && tsc -p tsconfig.build.json && node tools/build-worker.ts",
+    "check": "tsc --noEmit",
+    "test": "yarn build && node --import tsx --test sdk/*.spec.ts runtime/*.spec.ts desktop/*.spec.ts cli/*.spec.ts",
+    "start": "node dist/runtime/main.js",
+    "dev": "node --import tsx --watch runtime/main.ts",
+    "extension": "node --import tsx cli/main.ts",
+    "extensions": "node --import tsx runtime/extension-cli.ts",
+    "generate:api": "node --import tsx runtime/generate-api.ts && biome format --write runtime/generated",
+    "verify:generated": "yarn generate:api && git diff --exit-code -- runtime/generated",
+    "desktop:dev": "yarn build && node tools/prepare-desktop.ts && cd desktop && tauri dev",
+    "desktop:build": "yarn build && node tools/prepare-desktop.ts && cd desktop && tauri build",
+    "fmt": "biome format .",
+    "fmt:write": "biome format --write .",
+    "lint": "biome lint .",
+    "audit": "yarn npm audit --all --recursive",
+    "check:templates": "yarn workspaces foreach --all --include '@edge-examples/*' run check"
+  },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.79",
+    "@edge-connector/sdk": "workspace:*",
+    "@hono/node-server": "^2.1.5",
+    "@tauri-apps/api": "2.12.2",
+    "@tauri-apps/plugin-dialog": "^2.8.2",
+    "ajv": "8.20.0",
+    "esbuild": "0.28.2",
+    "hono": "^4.13.13",
+    "proper-lockfile": "^4.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2",
+    "undici": "^8.11.2",
+    "ws": "^8.22.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@tauri-apps/cli": "2.12.2",
+    "@types/node": "26.6.5",
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/ws": "^8.18.2"
+  }
+}

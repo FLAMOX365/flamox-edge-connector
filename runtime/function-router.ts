@@ -1,3 +1,4 @@
+import { environmentSnapshot } from "./environment.ts";
 /**
  * HTTP Function Router
  *
@@ -6,7 +7,7 @@
  * @module
  */
 
-import { createHttpContext } from "../sdk/http.ts";
+import { createHttpContext } from "@edge-connector/sdk/http";
 import type { ProtocolExecutor } from "./connector.ts";
 import type { HttpFunctionScanner } from "./function-scanner.ts";
 import type {
@@ -39,7 +40,7 @@ export class HttpFunctionRouter implements ProtocolExecutor {
 
   constructor(options: HttpFunctionRouterOptions) {
     this.scanner = options.scanner;
-    this.env = options.env ?? Deno.env.toObject();
+    this.env = options.env ?? environmentSnapshot();
     this.logger = options.logger ?? createLogger();
   }
 
@@ -64,9 +65,9 @@ export class HttpFunctionRouter implements ProtocolExecutor {
         const allowed = this.scanner.getAllowedMethods(pathname);
         throw new RuntimeError(
           "METHOD_NOT_ALLOWED",
-          `Method ${request.method} not allowed. Allowed: ${
-            allowed.join(", ")
-          }`,
+          `Method ${request.method} not allowed. Allowed: ${allowed.join(
+            ", ",
+          )}`,
         );
       }
       throw new RuntimeError(
@@ -123,9 +124,10 @@ export class HttpFunctionRouter implements ProtocolExecutor {
     return new Request(url.href, {
       method: request.method,
       headers,
-      body: request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : request.body ?? undefined,
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : (request.body ?? undefined),
     });
   }
 

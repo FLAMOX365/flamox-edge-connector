@@ -2,7 +2,7 @@
 
 Use [GitHub issues](https://github.com/FLAMOX365/flamox-edge-connector/issues)
 for reproducible defects, documentation gaps, and focused usage questions.
-Search existing issues first and include the Edge Connector version, Deno
+Search existing issues first and include the Edge Connector version, Node.js
 version, operating system, deployment form, minimal reproduction, and redacted
 logs where relevant.
 

@@ -1,7 +1,8 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../test/assert.ts";
 import { loadConfig } from "./config.ts";
 
-Deno.test("loadConfig uses documented defaults", () => {
+test("loadConfig uses documented defaults", () => {
   const config = loadConfig({});
 
   assertEquals(config, {
@@ -34,7 +35,7 @@ Deno.test("loadConfig uses documented defaults", () => {
   });
 });
 
-Deno.test("loadConfig reads explicit values and trims optional paths", () => {
+test("loadConfig reads explicit values and trims optional paths", () => {
   const config = loadConfig({
     EDGE_CONNECTOR_BIND_HOST: "127.0.0.1",
     EDGE_CONNECTOR_BIND_PORT: "9090",
@@ -66,7 +67,7 @@ Deno.test("loadConfig reads explicit values and trims optional paths", () => {
   assertEquals(config.logLevel, "debug");
 });
 
-Deno.test("loadConfig rejects invalid URL values", () => {
+test("loadConfig rejects invalid URL values", () => {
   assertThrows(
     () => loadConfig({ EDGE_CONNECTOR_WS_URL: "cloud.example/ws" }),
     Error,
@@ -79,7 +80,7 @@ Deno.test("loadConfig rejects invalid URL values", () => {
   );
 });
 
-Deno.test("loadConfig requires authentication settings when cloud auth is used", () => {
+test("loadConfig requires authentication settings when cloud auth is used", () => {
   assertThrows(
     () => loadConfig({ EDGE_CONNECTOR_WS_URL: "wss://cloud.example/ws" }),
     Error,
@@ -87,7 +88,7 @@ Deno.test("loadConfig requires authentication settings when cloud auth is used",
   );
 });
 
-Deno.test("loadConfig keeps original environment aliases operational", () => {
+test("loadConfig keeps original environment aliases operational", () => {
   const config = loadConfig({
     CLOUD_CONNECTOR_WS_URL: "wss://legacy.example/ws",
     CLOUD_CONNECTOR_HOST: "https://legacy.example",
@@ -107,7 +108,7 @@ Deno.test("loadConfig keeps original environment aliases operational", () => {
   assertEquals(config.port, 8181);
 });
 
-Deno.test("loadConfig requires secure transport unless explicitly enabled for development", () => {
+test("loadConfig requires secure transport unless explicitly enabled for development", () => {
   assertThrows(
     () =>
       loadConfig({
@@ -129,7 +130,7 @@ Deno.test("loadConfig requires secure transport unless explicitly enabled for de
   assertEquals(config.allowInsecureConnections, true);
 });
 
-Deno.test("loadConfig rejects non-positive and non-integer numbers", () => {
+test("loadConfig rejects non-positive and non-integer numbers", () => {
   for (const value of ["0", "-1", "1.5", "abc"]) {
     assertThrows(
       () => loadConfig({ EDGE_CONNECTOR_BIND_PORT: value }),
@@ -144,7 +145,7 @@ Deno.test("loadConfig rejects non-positive and non-integer numbers", () => {
   );
 });
 
-Deno.test("loadConfig reads the resilience tuning settings", () => {
+test("loadConfig reads the resilience tuning settings", () => {
   const config = loadConfig({
     EDGE_CONNECTOR_CONNECT_TIMEOUT_SECONDS: "20",
     EDGE_CONNECTOR_RECONNECT_STABLE_SECONDS: "8",
@@ -163,12 +164,12 @@ Deno.test("loadConfig reads the resilience tuning settings", () => {
   assertEquals(config.livenessStaleMs, 200_000);
 });
 
-Deno.test("loadConfig allows disabling the heartbeat watchdog with factor 0", () => {
+test("loadConfig allows disabling the heartbeat watchdog with factor 0", () => {
   const config = loadConfig({ EDGE_CONNECTOR_HEARTBEAT_TIMEOUT_FACTOR: "0" });
   assertEquals(config.heartbeatTimeoutFactor, 0);
 });
 
-Deno.test("loadConfig rejects a jitter ratio outside 0..1", () => {
+test("loadConfig rejects a jitter ratio outside 0..1", () => {
   for (const value of ["-0.1", "1.5", "abc"]) {
     assertThrows(
       () => loadConfig({ EDGE_CONNECTOR_RECONNECT_JITTER_RATIO: value }),
@@ -178,7 +179,7 @@ Deno.test("loadConfig rejects a jitter ratio outside 0..1", () => {
   }
 });
 
-Deno.test("loadConfig rejects a negative heartbeat timeout factor", () => {
+test("loadConfig rejects a negative heartbeat timeout factor", () => {
   assertThrows(
     () => loadConfig({ EDGE_CONNECTOR_HEARTBEAT_TIMEOUT_FACTOR: "-1" }),
     Error,
@@ -186,7 +187,7 @@ Deno.test("loadConfig rejects a negative heartbeat timeout factor", () => {
   );
 });
 
-Deno.test("loadConfig rejects invalid log levels", () => {
+test("loadConfig rejects invalid log levels", () => {
   assertThrows(
     () => loadConfig({ EDGE_CONNECTOR_LOG_LEVEL: "trace" }),
     Error,
@@ -194,7 +195,7 @@ Deno.test("loadConfig rejects invalid log levels", () => {
   );
 });
 
-Deno.test("loadConfig requires the liveness window to exceed the max backoff", () => {
+test("loadConfig requires the liveness window to exceed the max backoff", () => {
   assertThrows(
     () =>
       loadConfig({
@@ -206,7 +207,7 @@ Deno.test("loadConfig requires the liveness window to exceed the max backoff", (
   );
 });
 
-Deno.test("loadConfig requires the liveness window to exceed the heartbeat interval", () => {
+test("loadConfig requires the liveness window to exceed the heartbeat interval", () => {
   assertThrows(
     () =>
       loadConfig({

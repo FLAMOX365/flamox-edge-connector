@@ -9,7 +9,7 @@
  *   GET /ad/users/mmueller
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 /**
  * User type returned by the AD bridge.
@@ -76,7 +76,7 @@ export default defineHttp({
     const url = `${bridgeUrl}/api/v1/users/${encodeURIComponent(id)}`;
 
     const headers: HeadersInit = {
-      "Accept": "application/json",
+      Accept: "application/json",
       "X-Request-Id": ctx.requestId,
     };
 
@@ -100,7 +100,7 @@ export default defineHttp({
         return ctx.res.error(response.status, `Bridge error: ${errorText}`);
       }
 
-      const data = await response.json() as { user: AdUser };
+      const data = (await response.json()) as { user: AdUser };
 
       // Normalize user.
       const user = normalizeUser(data.user);

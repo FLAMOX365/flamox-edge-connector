@@ -12,7 +12,7 @@
  * environment variable.
  */
 
-import { defineHttp, type HttpContext } from "@flamox/edge-connector-sdk";
+import { defineHttp, type HttpContext } from "@edge-connector/sdk";
 
 // Internal API URL from the environment.
 const getInternalUrl = (env: Record<string, string>) =>

@@ -26,12 +26,24 @@ export type RuntimeStatus = {
   reconnectAttempt: number;
 };
 
-export function createRuntimeStatus(now: number = Date.now()): RuntimeStatus {
-  return {
+export function createRuntimeStatus(
+  now: number = Date.now(),
+  onStateChanged?: () => void,
+): RuntimeStatus {
+  const status: RuntimeStatus = {
     connectionState: "disconnected",
     lastConnectedAt: null,
     lastInboundAt: null,
     lastTickAt: now,
     reconnectAttempt: 0,
   };
+  if (!onStateChanged) return status;
+  return new Proxy(status, {
+    set(target, key, value: unknown) {
+      const changed = Reflect.get(target, key) !== value;
+      Reflect.set(target, key, value);
+      if (changed && key !== "lastTickAt") onStateChanged();
+      return true;
+    },
+  });
 }

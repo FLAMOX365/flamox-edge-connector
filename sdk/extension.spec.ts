@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../test/assert.ts";
 import { defineExtension, isExtensionDefinition } from "./extension.ts";
 
-Deno.test("defineExtension preserves valid isolated action definitions", async () => {
+test("defineExtension preserves valid isolated action definitions", async () => {
   const extension = defineExtension({
     actions: {
       status: (_context, input) => Promise.resolve({ input }),
@@ -27,7 +28,7 @@ Deno.test("defineExtension preserves valid isolated action definitions", async (
   );
 });
 
-Deno.test("isExtensionDefinition rejects malformed action exports", () => {
+test("isExtensionDefinition rejects malformed action exports", () => {
   assertEquals(isExtensionDefinition(null), false);
   assertEquals(isExtensionDefinition({}), false);
   assertEquals(

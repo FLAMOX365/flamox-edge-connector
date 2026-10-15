@@ -8,6 +8,6 @@ export type EdgeConnectorHttpRequest = {
   headers?: {
     [key: string]: Array<string>;
   };
-  body?: (string) | null;
+  body?: string | null;
   timeoutSeconds?: number;
 };

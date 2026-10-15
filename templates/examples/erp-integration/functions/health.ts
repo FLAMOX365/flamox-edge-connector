@@ -2,7 +2,7 @@
  * Health endpoint for the ERP integration.
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 export default defineHttp({
   get: (ctx) => {

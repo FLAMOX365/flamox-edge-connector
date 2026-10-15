@@ -60,8 +60,8 @@ export function isExtensionDefinition(
     return false;
   }
 
-  return Object.values(value.actions).every((action) =>
-    typeof action === "function"
+  return Object.values(value.actions).every(
+    (action) => typeof action === "function",
   );
 }
 

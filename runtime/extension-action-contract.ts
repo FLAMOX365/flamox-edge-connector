@@ -1,13 +1,14 @@
+import * as fs from "node:fs/promises";
 import Ajv2020Module, {
   type AnySchema,
   type ValidateFunction,
 } from "ajv/dist/2020.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
   TELEPHONY_PROVIDER_OPERATION_SCHEMAS,
   type TelephonyProviderOperation,
-} from "../sdk/areas/telephony-schemas.ts";
-import type { JsonValue } from "../sdk/extension.ts";
+} from "@edge-connector/sdk/areas/telephony-schemas";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { ExtensionManifest } from "./extension-manifest.ts";
 import { RuntimeError } from "./runtime-error.ts";
 
@@ -96,23 +97,22 @@ async function resolveSchema(
       return TELEPHONY_PROVIDER_OPERATION_SCHEMAS[operation][boundary];
     }
   }
-  const action = manifest.actions.find((candidate) =>
-    candidate.name === actionName
+  const action = manifest.actions.find(
+    (candidate) => candidate.name === actionName,
   );
-  const schemaPath = boundary === "input"
-    ? action?.inputSchema
-    : action?.outputSchema;
+  const schemaPath =
+    boundary === "input" ? action?.inputSchema : action?.outputSchema;
   if (!schemaPath) return undefined;
   const path = join(extensionDirectory, schemaPath);
-  const info = await Deno.stat(path);
-  if (!info.isFile || info.size > 256 * 1024) {
+  const info = await fs.stat(path);
+  if (!info.isFile() || info.size > 256 * 1024) {
     throw new RuntimeError(
       "EXTENSION_ACTION_SCHEMA_INVALID",
       `Extension action '${actionName}' ${boundary} schema is missing or too large.`,
     );
   }
   try {
-    return JSON.parse(await Deno.readTextFile(path)) as unknown;
+    return JSON.parse(await fs.readFile(path, "utf8")) as unknown;
   } catch (error) {
     throw new RuntimeError(
       "EXTENSION_ACTION_SCHEMA_INVALID",

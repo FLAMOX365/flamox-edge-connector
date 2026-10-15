@@ -1,6 +1,7 @@
-import { emptyDir } from "@std/fs/empty-dir";
-import { join, resolve } from "@std/path";
-import { parse } from "@std/yaml";
+import * as fs from "node:fs/promises";
+import { emptyDirectory as emptyDir } from "./files.ts";
+import { join, resolve } from "node:path";
+import { parse } from "yaml";
 
 type OpenApiSchema = Readonly<Record<string, unknown>>;
 type SchemaCatalog = ReadonlyMap<string, OpenApiSchema>;
@@ -29,30 +30,29 @@ export async function generateApiModels(
 
   await emptyDir(outputDirectory);
   const modelsDirectory = join(outputDirectory, "models");
-  await Deno.mkdir(modelsDirectory, { recursive: true });
+  await fs.mkdir(modelsDirectory, { recursive: true });
 
   for (const [fileName, model] of renderedModels) {
-    await Deno.writeTextFile(
-      join(modelsDirectory, fileName),
-      model,
-    );
+    await fs.writeFile(join(modelsDirectory, fileName), model);
   }
-  await Deno.writeTextFile(join(outputDirectory, "models.ts"), barrel);
+  await fs.writeFile(join(outputDirectory, "models.ts"), barrel);
 }
 
 async function readSchemas(
   sourceDirectory: string,
 ): Promise<Map<string, OpenApiSchema>> {
   const files: string[] = [];
-  for await (const entry of Deno.readDir(sourceDirectory)) {
-    if (entry.isFile && /\.ya?ml$/u.test(entry.name)) files.push(entry.name);
+  for await (const entry of await fs.readdir(sourceDirectory, {
+    withFileTypes: true,
+  })) {
+    if (entry.isFile() && /\.ya?ml$/u.test(entry.name)) files.push(entry.name);
   }
   files.sort();
 
   const schemas = new Map<string, OpenApiSchema>();
   for (const file of files) {
     const document = asRecord(
-      parse(await Deno.readTextFile(join(sourceDirectory, file))),
+      parse(await fs.readFile(join(sourceDirectory, file), "utf8")),
       `OpenAPI document '${file}'`,
     );
     const components = asRecord(document.components, `'${file}' components`);
@@ -84,15 +84,13 @@ function renderModel(
   const lines = [generatedHeader];
   if (imports.size > 0) {
     lines.push("");
-    for (
-      const [path, symbols] of [...imports].sort(([left], [right]) =>
-        left.localeCompare(right)
-      )
-    ) {
+    for (const [path, symbols] of [...imports].sort(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
       lines.push(
-        `import type { ${
-          [...symbols].sort().join(", ")
-        } } from "./${path}.ts";`,
+        `import type { ${[...symbols]
+          .sort()
+          .join(", ")} } from "./${path}.ts";`,
       );
     }
   }
@@ -101,9 +99,11 @@ function renderModel(
   if (isEnum(schema)) {
     const constant = `${toConstantCase(name)}_VALUES`;
     lines.push(
-      `export const ${constant} = ${
-        JSON.stringify(schema.enum, null, 2)
-      } as const;`,
+      `export const ${constant} = ${JSON.stringify(
+        schema.enum,
+        null,
+        2,
+      )} as const;`,
     );
     lines.push("");
     lines.push(`export type ${name} = (typeof ${constant})[number];`);
@@ -135,9 +135,9 @@ function renderBarrel(schemas: SchemaCatalog): string {
     const symbols = hasBaseAlias(schema) ? [`_${name}Base`, name] : [name];
     typeExports.push(`export type { ${symbols.join(", ")} } from "${path}";`);
   }
-  return `${generatedHeader}\n\n${valueExports.join("\n")}\n\n${
-    typeExports.join("\n")
-  }\n`;
+  return `${generatedHeader}\n\n${valueExports.join("\n")}\n\n${typeExports.join(
+    "\n",
+  )}\n`;
 }
 
 function renderDiscriminatedType(
@@ -161,10 +161,11 @@ function renderDiscriminatedType(
   const discriminatorName = `${name}Discriminator`;
   const values = entries.map(({ value }) => renderLiteral(value)).join(" | ");
   const variants = entries
-    .map(({ type, value }) =>
-      `${JSON.stringify(value)}: { ${propertyName(property)}: ${
-        renderLiteral(value)
-      } } & ${type};`
+    .map(
+      ({ type, value }) =>
+        `${JSON.stringify(value)}: { ${propertyName(property)}: ${renderLiteral(
+          value,
+        )} } & ${type};`,
     )
     .join("\n");
   return `type ${discriminatorName} = ${values};
@@ -206,9 +207,11 @@ function renderType(
         type = "boolean";
         break;
       case "array":
-        type = `Array<${
-          renderType(asRecord(schema.items, "array items"), schemas, false)
-        }>`;
+        type = `Array<${renderType(
+          asRecord(schema.items, "array items"),
+          schemas,
+          false,
+        )}>`;
         break;
       case "object":
       case undefined:
@@ -237,7 +240,7 @@ function renderUnion(
         asRecord(candidate, "union schema"),
         schemas,
         preferBaseReference,
-      )
+      ),
     )
     .join(" | ");
 }
@@ -247,32 +250,33 @@ function renderObject(schema: OpenApiSchema, schemas: SchemaCatalog): string {
   const required = new Set(
     Array.isArray(schema.required)
       ? schema.required.map((value) =>
-        requiredString(value, "required property")
-      )
+          requiredString(value, "required property"),
+        )
       : [],
   );
   const members: string[] = [];
   for (const [name, property] of Object.entries(properties)) {
     const optional = required.has(name) ? "" : "?";
     members.push(
-      `${propertyName(name)}${optional}: ${
-        renderType(asRecord(property, `property '${name}'`), schemas, false)
-      };`,
+      `${propertyName(name)}${optional}: ${renderType(
+        asRecord(property, `property '${name}'`),
+        schemas,
+        false,
+      )};`,
     );
   }
   if (schema.additionalProperties === true) {
     members.push("[key: string]: unknown;");
   } else if (
-    schema.additionalProperties && schema.additionalProperties !== false
+    schema.additionalProperties &&
+    schema.additionalProperties !== false
   ) {
     members.push(
-      `[key: string]: ${
-        renderType(
-          asRecord(schema.additionalProperties, "additional properties"),
-          schemas,
-          false,
-        )
-      };`,
+      `[key: string]: ${renderType(
+        asRecord(schema.additionalProperties, "additional properties"),
+        schemas,
+        false,
+      )};`,
     );
   }
   return members.length === 0
@@ -292,9 +296,10 @@ function collectImports(
 
   const imports = new Map<string, Set<string>>();
   for (const symbol of symbols) {
-    const name = symbol.startsWith("_") && symbol.endsWith("Base")
-      ? symbol.slice(1, -4)
-      : symbol;
+    const name =
+      symbol.startsWith("_") && symbol.endsWith("Base")
+        ? symbol.slice(1, -4)
+        : symbol;
     const path = toKebabCase(name);
     const current = imports.get(path) ?? new Set<string>();
     current.add(symbol);
@@ -368,8 +373,10 @@ function referencedSymbol(
 }
 
 function hasBaseAlias(schema: OpenApiSchema): boolean {
-  return optionalRecord(schema.discriminator) !== undefined &&
-    (schema.type === "object" || Array.isArray(schema.oneOf));
+  return (
+    optionalRecord(schema.discriminator) !== undefined &&
+    (schema.type === "object" || Array.isArray(schema.oneOf))
+  );
 }
 
 function isEnum(
@@ -388,7 +395,8 @@ function referenceName(reference: string): string {
 
 function renderLiteral(value: unknown): string {
   if (
-    typeof value !== "string" && typeof value !== "number" &&
+    typeof value !== "string" &&
+    typeof value !== "number" &&
     typeof value !== "boolean"
   ) {
     throw new Error(
@@ -444,11 +452,11 @@ function asRecord(
 
 if (import.meta.main) {
   const sourceDirectory = resolve(
-    import.meta.dirname ?? Deno.cwd(),
+    import.meta.dirname ?? process.cwd(),
     "../openapi",
   );
   const outputDirectory = resolve(
-    import.meta.dirname ?? Deno.cwd(),
+    import.meta.dirname ?? process.cwd(),
     "generated",
   );
   await generateApiModels(sourceDirectory, outputDirectory);

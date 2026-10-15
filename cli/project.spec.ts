@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "../runtime/files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals, assertRejects } from "../test/assert.ts";
 import {
   createProject,
   executeDevelopmentAction,
@@ -8,8 +11,8 @@ import {
 } from "./project.ts";
 import { generatePublisherKey } from "../runtime/extension-publisher.ts";
 
-Deno.test("scaffolded Hello World extension validates, tests, packages and executes", async () => {
-  const root = await Deno.makeTempDir();
+test("scaffolded Hello World extension validates, tests, packages and executes", async () => {
+  const root = await makeTempDirectory();
   const project = `${root}/hello-world`;
   try {
     await createProject({
@@ -21,7 +24,7 @@ Deno.test("scaffolded Hello World extension validates, tests, packages and execu
     });
     const manifest = await validateProject(project);
     assertEquals(manifest.capabilities, ["host.ui.message-box"]);
-    await Deno.writeFile(
+    await fs.writeFile(
       `${project}/store-image.png`,
       Uint8Array.from(
         atob(
@@ -50,23 +53,22 @@ Deno.test("scaffolded Hello World extension validates, tests, packages and execu
 
     const pair = await generatePublisherKey("FLAMOX365", "official-2026");
     const keyPath = `${root}/publisher.jwk`;
-    await Deno.writeTextFile(keyPath, JSON.stringify(pair.privateKey));
-    const packaged = await packageProject(
-      project,
-      keyPath,
-      "official-2026",
-    );
+    await fs.writeFile(keyPath, JSON.stringify(pair.privateKey));
+    const packaged = await packageProject(project, keyPath, "official-2026");
     assertEquals(packaged.bundle.release.extensionId, "hello-world");
     assertEquals(
-      packaged.bundle.files.some((file) =>
-        file.path === "runtime/extension.js"
+      packaged.bundle.files.some(
+        (file) => file.path === "runtime/extension.mjs",
       ),
       true,
     );
     assertEquals(
-      packaged.bundle.files.some((file) =>
-        file.path.startsWith("src/") || file.path.endsWith("/sdk.ts") ||
-        file.path === "deno.json" || file.path === "deno.lock"
+      packaged.bundle.files.some(
+        (file) =>
+          file.path.startsWith("src/") ||
+          file.path.endsWith("/sdk.ts") ||
+          file.path === "package.json" ||
+          file.path === "yarn.lock",
       ),
       false,
     );
@@ -79,20 +81,21 @@ Deno.test("scaffolded Hello World extension validates, tests, packages and execu
       true,
     );
     assertEquals(
-      packaged.bundle.files.some((file) =>
-        file.path === "grant.dev.json" ||
-        file.path.startsWith("examples/") ||
-        /\.(?:jwk|pem|key)$/u.test(file.path)
+      packaged.bundle.files.some(
+        (file) =>
+          file.path === "grant.dev.json" ||
+          file.path.startsWith("examples/") ||
+          /\.(?:jwk|pem|key)$/u.test(file.path),
       ),
       false,
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("project validation rejects ambiguous or invalid Store images", async () => {
-  const root = await Deno.makeTempDir();
+test("project validation rejects ambiguous or invalid Store images", async () => {
+  const root = await makeTempDirectory();
   const project = `${root}/store-image`;
   try {
     await createProject({
@@ -102,25 +105,25 @@ Deno.test("project validation rejects ambiguous or invalid Store images", async 
       publisher: "FLAMOX365",
       sdkSource: new URL("../sdk/mod.ts", import.meta.url).href,
     });
-    await Deno.writeTextFile(`${project}/store-image.png`, "not a PNG");
+    await fs.writeFile(`${project}/store-image.png`, "not a PNG");
     await assertRejects(
       () => validateProject(project),
       Error,
       "does not match its file type",
     );
-    await Deno.writeTextFile(`${project}/store-image.webp`, "not a WebP");
+    await fs.writeFile(`${project}/store-image.webp`, "not a WebP");
     await assertRejects(
       () => validateProject(project),
       Error,
       "only one Store image",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("telephony scaffold is deployable and declares the optional Area contract", async () => {
-  const root = await Deno.makeTempDir();
+test("telephony scaffold is deployable and declares the optional Area contract", async () => {
+  const root = await makeTempDirectory();
   const project = `${root}/telephony-provider`;
   try {
     await createProject({
@@ -135,12 +138,12 @@ Deno.test("telephony scaffold is deployable and declares the optional Area contr
     assertEquals(manifest.contributions[0]?.area, "telephony");
     await testProject(project);
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("project validation rejects oversized JSON Schema resources", async () => {
-  const root = await Deno.makeTempDir();
+test("project validation rejects oversized JSON Schema resources", async () => {
+  const root = await makeTempDirectory();
   const project = `${root}/oversized-schema`;
   try {
     await createProject({
@@ -150,7 +153,7 @@ Deno.test("project validation rejects oversized JSON Schema resources", async ()
       publisher: "FLAMOX365",
       sdkSource: new URL("../sdk/mod.ts", import.meta.url).href,
     });
-    await Deno.writeTextFile(
+    await fs.writeFile(
       `${project}/configuration.schema.json`,
       " ".repeat(256 * 1024 + 1),
     );
@@ -160,6 +163,6 @@ Deno.test("project validation rejects oversized JSON Schema resources", async ()
       "cannot be read",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });

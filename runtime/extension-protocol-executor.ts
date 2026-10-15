@@ -1,4 +1,4 @@
-import type { JsonValue } from "../sdk/extension.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { ProtocolExecutor } from "./connector.ts";
 import type { ExtensionManager } from "./extension-manager.ts";
 import type {
@@ -102,7 +102,8 @@ function parseInput(body: string | null | undefined): JsonValue {
 
 function isJsonValue(value: unknown): value is JsonValue {
   if (
-    value === null || typeof value === "boolean" ||
+    value === null ||
+    typeof value === "boolean" ||
     typeof value === "string"
   ) {
     return true;

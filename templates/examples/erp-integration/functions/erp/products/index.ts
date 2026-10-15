@@ -6,7 +6,7 @@
  * Maps to: /sap/opu/odata/sap/MATERIALS_SRV/MaterialSet
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 import {
   cleanResponseHeaders,
   createSapHeaders,

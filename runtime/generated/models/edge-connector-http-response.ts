@@ -5,5 +5,5 @@ export type EdgeConnectorHttpResponse = {
   headers?: {
     [key: string]: Array<string>;
   };
-  body?: (string) | null;
+  body?: string | null;
 };

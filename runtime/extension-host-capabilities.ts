@@ -1,8 +1,10 @@
+import { executeCommand } from "./command.ts";
+import { isNotFound } from "./files.ts";
 import type {
   JsonValue,
   ShowMessageRequest,
   ShowMessageResult,
-} from "../sdk/extension.ts";
+} from "@edge-connector/sdk/extension";
 import { RuntimeError } from "./runtime-error.ts";
 
 export const SHOW_MESSAGE_CAPABILITY = "host.ui.message-box";
@@ -21,7 +23,8 @@ export interface ExtensionHostCapabilityProvider {
 }
 
 export class DenyAllExtensionHostCapabilityProvider
-  implements ExtensionHostCapabilityProvider {
+  implements ExtensionHostCapabilityProvider
+{
   invoke(call: ExtensionHostCall): Promise<JsonValue> {
     return Promise.reject(
       new RuntimeError(
@@ -38,7 +41,8 @@ export interface MessageBoxAdapter {
 
 /** Exposes only explicitly implemented interactive UI operations. */
 export class InteractiveExtensionHostCapabilityProvider
-  implements ExtensionHostCapabilityProvider {
+  implements ExtensionHostCapabilityProvider
+{
   constructor(private readonly messageBox: MessageBoxAdapter) {}
 
   async invoke(call: ExtensionHostCall): Promise<JsonValue> {
@@ -60,7 +64,7 @@ export class InteractiveExtensionHostCapabilityProvider
 export class NativeMessageBoxAdapter implements MessageBoxAdapter {
   async show(request: ShowMessageRequest): Promise<void> {
     const normalized = parseShowMessageRequest(request as unknown as JsonValue);
-    switch (Deno.build.os) {
+    switch (process.platform === "win32" ? "windows" : process.platform) {
       case "darwin":
         await runMacOsMessageBox(normalized);
         return;
@@ -73,7 +77,7 @@ export class NativeMessageBoxAdapter implements MessageBoxAdapter {
       default:
         throw new RuntimeError(
           "HOST_UI_NOT_SUPPORTED",
-          `Native message boxes are not supported on '${Deno.build.os}'.`,
+          `Native message boxes are not supported on '${process.platform === "win32" ? "windows" : process.platform}'.`,
         );
     }
   }
@@ -98,8 +102,10 @@ export function parseShowMessageRequest(value: JsonValue): ShowMessageRequest {
   const title = value.title.trim();
   const message = value.message.trim();
   if (
-    title.length === 0 || title.length > 200 ||
-    message.length === 0 || message.length > 4_000
+    title.length === 0 ||
+    title.length > 200 ||
+    message.length === 0 ||
+    message.length > 4_000
   ) {
     invalidMessageBox();
   }
@@ -116,10 +122,7 @@ async function runMacOsMessageBox(request: ShowMessageRequest): Promise<void> {
     'display dialog (item 2 of argv) with title (item 1 of argv) buttons {"OK"} default button "OK"',
     "end run",
   ].join("\n");
-  await runCommand(
-    "osascript",
-    ["-e", script, request.title, request.message],
-  );
+  await runCommand("osascript", ["-e", script, request.title, request.message]);
 }
 
 async function runWindowsMessageBox(
@@ -148,7 +151,7 @@ async function runWindowsMessageBox(
       ]);
       return;
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!isNotFound(error)) throw error;
       missing = error;
     }
   }
@@ -165,28 +168,28 @@ async function runLinuxMessageBox(request: ShowMessageRequest): Promise<void> {
       request.kind === "error"
         ? "--error"
         : request.kind === "warning"
-        ? "--warning"
-        : "--info",
+          ? "--warning"
+          : "--info",
       `--title=${request.title}`,
       `--text=${request.message}`,
     ]);
     return;
   } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+    if (!isNotFound(error)) throw error;
   }
   try {
     await runCommand("kdialog", [
       request.kind === "error"
         ? "--error"
         : request.kind === "warning"
-        ? "--sorry"
-        : "--msgbox",
+          ? "--sorry"
+          : "--msgbox",
       request.message,
       "--title",
       request.title,
     ]);
   } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+    if (!isNotFound(error)) throw error;
     throw new RuntimeError(
       "HOST_UI_NOT_SUPPORTED",
       "Neither zenity nor kdialog is installed.",
@@ -199,12 +202,7 @@ async function runCommand(
   executable: string,
   args: readonly string[],
 ): Promise<void> {
-  const output = await new Deno.Command(executable, {
-    args: [...args],
-    stdin: "null",
-    stdout: "null",
-    stderr: "piped",
-  }).output();
+  const output = await executeCommand(executable, args);
   if (!output.success) {
     const detail = new TextDecoder().decode(output.stderr).trim();
     throw new RuntimeError(

@@ -11,7 +11,7 @@
  * - Return 204 No Content responses
  */
 
-import { http } from "@flamox/edge-connector-sdk";
+import { http } from "@edge-connector/sdk";
 
 // Same data structure as in index.ts.
 interface User {
@@ -24,18 +24,24 @@ interface User {
 // In a real application, import your data source here.
 // This example uses a simple in-memory store.
 const users: Map<string, User> = new Map([
-  ["1", {
-    id: "1",
-    name: "Max Miller",
-    email: "m.mueller@example.com",
-    department: "IT",
-  }],
-  ["2", {
-    id: "2",
-    name: "Anna Schmidt",
-    email: "a.schmidt@example.com",
-    department: "HR",
-  }],
+  [
+    "1",
+    {
+      id: "1",
+      name: "Max Miller",
+      email: "m.mueller@example.com",
+      department: "IT",
+    },
+  ],
+  [
+    "2",
+    {
+      id: "2",
+      name: "Anna Schmidt",
+      email: "a.schmidt@example.com",
+      department: "HR",
+    },
+  ],
 ]);
 
 export default http()

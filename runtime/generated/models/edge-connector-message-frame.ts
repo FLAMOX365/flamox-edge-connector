@@ -15,12 +15,11 @@ type EdgeConnectorMessageFrameDiscriminator =
   | "heartbeat";
 
 export type EdgeConnectorMessageFrame<
-  TType extends EdgeConnectorMessageFrameDiscriminator =
-    EdgeConnectorMessageFrameDiscriminator,
-> =
-  & _EdgeConnectorMessageFrameBase
-  & ({
-    "request": { type: "request" } & EdgeConnectorRequestFrame;
-    "response": { type: "response" } & EdgeConnectorResponseFrame;
-    "heartbeat": { type: "heartbeat" } & EdgeConnectorHeartbeatFrame;
-  })[TType];
+  TType extends
+    EdgeConnectorMessageFrameDiscriminator = EdgeConnectorMessageFrameDiscriminator,
+> = _EdgeConnectorMessageFrameBase &
+  {
+    request: { type: "request" } & EdgeConnectorRequestFrame;
+    response: { type: "response" } & EdgeConnectorResponseFrame;
+    heartbeat: { type: "heartbeat" } & EdgeConnectorHeartbeatFrame;
+  }[TType];

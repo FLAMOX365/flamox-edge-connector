@@ -1,0 +1,21 @@
+{
+  "name": "@edge-examples/extension",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26.0.0 <27"
+  },
+  "packageManager": "yarn@4.18.1",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test"
+  },
+  "dependencies": {
+    "@edge-connector/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

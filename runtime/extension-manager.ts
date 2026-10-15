@@ -1,8 +1,11 @@
-import { copy, walk } from "@std/fs";
-import { join, relative, resolve } from "@std/path";
+import lockfile from "proper-lockfile";
+import { isNotFound } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { copyTree as copy, walk } from "./files.ts";
+import { join, relative, resolve } from "node:path";
 import type { AnySchema } from "ajv";
 import Ajv2020Module from "ajv/dist/2020.js";
-import type { JsonValue } from "../sdk/extension.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type {
   ExtensionReleaseDescriptor,
   ExtensionReleaseVerifier,
@@ -19,12 +22,12 @@ import {
 } from "./extension-policy.ts";
 import type { ExtensionSecretProvider } from "./extension-secrets.ts";
 import type { ExtensionHostCapabilityProvider } from "./extension-host-capabilities.ts";
-import {
+import type {
   ExtensionStateStore,
-  type InstalledExtensionRevision,
-  type InstalledExtensionState,
+  InstalledExtensionRevision,
+  InstalledExtensionState,
 } from "./extension-state.ts";
-import { ExtensionWorkerHost } from "./extension-worker-host.ts";
+import { ExtensionHost } from "./extension-host.ts";
 import type { RuntimeLogger } from "./logger.ts";
 import { createLogger } from "./logger.ts";
 import { RuntimeError } from "./runtime-error.ts";
@@ -58,9 +61,9 @@ export type ExtensionManagerOptions = {
 export class ExtensionManager {
   readonly #options: ExtensionManagerOptions;
   readonly #logger: RuntimeLogger;
-  readonly #active = new Map<string, ExtensionWorkerHost>();
+  readonly #active = new Map<string, ExtensionHost>();
   #states = new Map<string, InstalledExtensionState>();
-  #lockFile: Deno.FsFile | undefined;
+  #releaseLock: (() => void) | undefined;
 
   constructor(options: ExtensionManagerOptions) {
     this.#options = options;
@@ -68,20 +71,20 @@ export class ExtensionManager {
   }
 
   async initialize(): Promise<void> {
-    if (this.#lockFile) {
+    if (this.#releaseLock) {
       throw new Error("Extension manager is already initialized.");
     }
-    await Deno.mkdir(this.#options.dataDirectory, {
+    await fs.mkdir(this.#options.dataDirectory, {
       recursive: true,
       mode: 0o700,
     });
     await this.acquireLock();
     try {
-      await Deno.mkdir(this.packagesDirectory(), {
+      await fs.mkdir(this.packagesDirectory(), {
         recursive: true,
         mode: 0o700,
       });
-      await Deno.mkdir(this.stagingDirectory(), {
+      await fs.mkdir(this.stagingDirectory(), {
         recursive: true,
         mode: 0o700,
       });
@@ -120,7 +123,7 @@ export class ExtensionManager {
 
   list(): readonly InstalledExtensionState[] {
     return [...this.#states.values()].sort((left, right) =>
-      left.extensionId.localeCompare(right.extensionId)
+      left.extensionId.localeCompare(right.extensionId),
     );
   }
 
@@ -130,14 +133,14 @@ export class ExtensionManager {
     const release = parseExtensionReleaseDescriptor(request.release);
     const grant = parseExtensionGrant(request.grant);
     const configuration = parseExtensionConfiguration(request.configuration);
-    const sourceDirectory = await Deno.realPath(request.sourceDirectory);
+    const sourceDirectory = await fs.realpath(request.sourceDirectory);
     const manifest = await readExtensionManifest(sourceDirectory);
     this.#options.policy.authorize(manifest, grant, configuration);
     await this.#options.verifier.verify(sourceDirectory, manifest, release);
     await validateConfiguration(sourceDirectory, manifest, configuration);
 
     const staging = join(this.stagingDirectory(), crypto.randomUUID());
-    let candidate: ExtensionWorkerHost | undefined;
+    let candidate: ExtensionHost | undefined;
     let createdPackagePath: string | undefined;
     try {
       await copy(sourceDirectory, staging, { overwrite: false });
@@ -147,14 +150,14 @@ export class ExtensionManager {
 
       const packagePath = this.releasePackagePath(release);
       const absolutePackagePath = this.resolvePackagePath(packagePath);
-      await Deno.mkdir(resolve(absolutePackagePath, ".."), {
+      await fs.mkdir(resolve(absolutePackagePath, ".."), {
         recursive: true,
         mode: 0o700,
       });
       if (await exists(absolutePackagePath)) {
-        await Deno.remove(staging, { recursive: true });
+        await fs.rm(staging, { recursive: true });
       } else {
-        await Deno.rename(staging, absolutePackagePath);
+        await fs.rename(staging, absolutePackagePath);
         createdPackagePath = absolutePackagePath;
         await sealPackage(absolutePackagePath);
       }
@@ -171,8 +174,10 @@ export class ExtensionManager {
       // Always launch from the immutable final path. A worker must never
       // retain a dependency on the transient staging directory.
       if (
-        request.activate || finalManifest.lifecycle?.install ||
-        finalManifest.lifecycle?.configure || finalManifest.lifecycle?.migrate
+        request.activate ||
+        finalManifest.lifecycle?.install ||
+        finalManifest.lifecycle?.configure ||
+        finalManifest.lifecycle?.migrate
       ) {
         candidate = this.createHost(
           absolutePackagePath,
@@ -189,19 +194,9 @@ export class ExtensionManager {
         } else {
           await this.runLifecycle(candidate, finalManifest, "install", null);
         }
-        await this.runLifecycle(
-          candidate,
-          finalManifest,
-          "configure",
-          null,
-        );
+        await this.runLifecycle(candidate, finalManifest, "configure", null);
         if (request.activate) {
-          await this.runLifecycle(
-            candidate,
-            finalManifest,
-            "activate",
-            null,
-          );
+          await this.runLifecycle(candidate, finalManifest, "activate", null);
           await this.runHealth(candidate, finalManifest);
         }
       }
@@ -221,9 +216,9 @@ export class ExtensionManager {
         lastErrorCode: null,
         history: previousState
           ? [revisionOf(previousState), ...(previousState.history ?? [])].slice(
-            0,
-            10,
-          )
+              0,
+              10,
+            )
           : [],
       };
       this.#states.set(manifest.id, state);
@@ -260,9 +255,9 @@ export class ExtensionManager {
       candidate?.stop();
       if (createdPackagePath) {
         try {
-          await Deno.remove(createdPackagePath, { recursive: true });
+          await fs.rm(createdPackagePath, { recursive: true });
         } catch (cleanupError) {
-          if (!(cleanupError instanceof Deno.errors.NotFound)) {
+          if (!isNotFound(cleanupError)) {
             this.#logger.warn(
               "Unable to remove failed extension package.",
               cleanupError,
@@ -271,9 +266,9 @@ export class ExtensionManager {
         }
       }
       try {
-        await Deno.remove(staging, { recursive: true });
+        await fs.rm(staging, { recursive: true });
       } catch (cleanupError) {
-        if (!(cleanupError instanceof Deno.errors.NotFound)) {
+        if (!isNotFound(cleanupError)) {
           this.#logger.warn(
             "Unable to remove failed extension staging directory.",
             cleanupError,
@@ -354,7 +349,7 @@ export class ExtensionManager {
     this.#options.policy.authorize(manifest, grant, configuration);
     await validateConfiguration(directory, manifest, configuration);
 
-    let candidate: ExtensionWorkerHost | undefined;
+    let candidate: ExtensionHost | undefined;
     if (previous.status === "ACTIVE") {
       candidate = this.createHost(directory, manifest, grant, configuration);
       try {
@@ -371,9 +366,10 @@ export class ExtensionManager {
       ...previous,
       grant,
       configuration,
-      activatedAt: previous.status === "ACTIVE"
-        ? (this.#options.now ?? (() => new Date()))().toISOString()
-        : previous.activatedAt,
+      activatedAt:
+        previous.status === "ACTIVE"
+          ? (this.#options.now ?? (() => new Date()))().toISOString()
+          : previous.activatedAt,
       lastErrorCode: null,
     };
     this.#states.set(extensionId, updated);
@@ -397,9 +393,10 @@ export class ExtensionManager {
   ): Promise<InstalledExtensionState> {
     const previous = this.requiredState(extensionId);
     const history = previous.history ?? [];
-    const index = version === undefined
-      ? 0
-      : history.findIndex((revision) => revision.version === version);
+    const index =
+      version === undefined
+        ? 0
+        : history.findIndex((revision) => revision.version === version);
     if (index < 0 || !history[index]) {
       throw new RuntimeError(
         "EXTENSION_ROLLBACK_NOT_AVAILABLE",
@@ -409,15 +406,15 @@ export class ExtensionManager {
       );
     }
     const target = history[index];
-    let candidate: ExtensionWorkerHost | undefined;
+    let candidate: ExtensionHost | undefined;
     if (previous.status === "ACTIVE") {
       candidate = await this.createVerifiedHost(target, true);
     } else {
       await this.verifyRevision(target);
     }
     const now = (this.#options.now ?? (() => new Date()))().toISOString();
-    const remaining = history.filter((_, candidateIndex) =>
-      candidateIndex !== index
+    const remaining = history.filter(
+      (_, candidateIndex) => candidateIndex !== index,
     );
     const rolledBack: InstalledExtensionState = {
       ...target,
@@ -454,19 +451,9 @@ export class ExtensionManager {
     if (lifecycleHost) {
       try {
         if (state.status === "ACTIVE") {
-          await this.runLifecycle(
-            lifecycleHost,
-            manifest,
-            "deactivate",
-            null,
-          );
+          await this.runLifecycle(lifecycleHost, manifest, "deactivate", null);
         }
-        await this.runLifecycle(
-          lifecycleHost,
-          manifest,
-          "uninstall",
-          null,
-        );
+        await this.runLifecycle(lifecycleHost, manifest, "uninstall", null);
       } finally {
         if (temporaryHost) lifecycleHost.stop();
       }
@@ -485,11 +472,13 @@ export class ExtensionManager {
       ...(state.history ?? []).map((revision) => revision.packagePath),
     ]);
     for (const packagePath of packagePaths) {
-      await Deno.remove(this.resolvePackagePath(packagePath), {
-        recursive: true,
-      }).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
-      });
+      await fs
+        .rm(this.resolvePackagePath(packagePath), {
+          recursive: true,
+        })
+        .catch((error) => {
+          if (!isNotFound(error)) throw error;
+        });
     }
     this.#logger.info(`Extension '${extensionId}' was uninstalled.`);
   }
@@ -521,14 +510,10 @@ export class ExtensionManager {
   private async createVerifiedHost(
     state: InstalledExtensionRevision,
     runActivationLifecycle = false,
-  ): Promise<ExtensionWorkerHost> {
+  ): Promise<ExtensionHost> {
     const directory = this.resolvePackagePath(state.packagePath);
     const manifest = await readExtensionManifest(directory);
-    this.#options.policy.authorize(
-      manifest,
-      state.grant,
-      state.configuration,
-    );
+    this.#options.policy.authorize(manifest, state.grant, state.configuration);
     await this.#options.verifier.verify(directory, manifest, state.release);
     const host = this.createHost(
       directory,
@@ -554,11 +539,7 @@ export class ExtensionManager {
   ): Promise<void> {
     const directory = this.resolvePackagePath(state.packagePath);
     const manifest = await readExtensionManifest(directory);
-    this.#options.policy.authorize(
-      manifest,
-      state.grant,
-      state.configuration,
-    );
+    this.#options.policy.authorize(manifest, state.grant, state.configuration);
     await this.#options.verifier.verify(directory, manifest, state.release);
     await validateConfiguration(directory, manifest, state.configuration);
   }
@@ -568,8 +549,8 @@ export class ExtensionManager {
     manifest: ExtensionManifest,
     grant: ExtensionGrant,
     configuration: Readonly<Record<string, JsonValue>>,
-  ): ExtensionWorkerHost {
-    return new ExtensionWorkerHost({
+  ): ExtensionHost {
+    return new ExtensionHost({
       extensionDirectory: directory,
       manifest,
       grant,
@@ -580,7 +561,7 @@ export class ExtensionManager {
   }
 
   private async runHealth(
-    host: ExtensionWorkerHost,
+    host: ExtensionHost,
     manifest: ExtensionManifest,
   ): Promise<void> {
     if (!manifest.health) {
@@ -595,7 +576,7 @@ export class ExtensionManager {
   }
 
   private async runLifecycle(
-    host: ExtensionWorkerHost,
+    host: ExtensionHost,
     manifest: ExtensionManifest,
     lifecycle: keyof NonNullable<ExtensionManifest["lifecycle"]>,
     input: JsonValue,
@@ -620,8 +601,12 @@ export class ExtensionManager {
 
   private releasePackagePath(release: ExtensionReleaseDescriptor): string {
     const digestDirectory = release.digest.replaceAll(":", "-");
-    return ["packages", release.extensionId, release.version, digestDirectory]
-      .join("/");
+    return [
+      "packages",
+      release.extensionId,
+      release.version,
+      digestDirectory,
+    ].join("/");
   }
 
   private resolvePackagePath(packagePath: string): string {
@@ -656,34 +641,29 @@ export class ExtensionManager {
       this.#options.dataDirectory,
       ".extension-manager.lock",
     );
-    const file = await Deno.open(lockPath, {
-      create: true,
-      read: true,
-      write: true,
-      mode: 0o600,
-    });
     try {
-      if (!(await file.tryLock(true))) {
-        throw new Error(
-          "Another connector process already owns the extension data directory.",
-        );
-      }
-      this.#lockFile = file;
+      this.#releaseLock = lockfile.lockSync(lockPath, {
+        realpath: false,
+        stale: 30_000,
+        update: 10_000,
+        retries: 0,
+        onCompromised: (error) => {
+          this.stop();
+          throw error;
+        },
+      });
     } catch (error) {
-      file.close();
-      throw error;
+      throw new Error(
+        "Another connector process already owns the extension data directory.",
+        { cause: error },
+      );
     }
   }
 
   private releaseLock(): void {
-    if (!this.#lockFile) return;
-    try {
-      this.#lockFile.unlockSync();
-    } catch {
-      // Closing the descriptor still releases the operating-system lock.
-    }
-    this.#lockFile.close();
-    this.#lockFile = undefined;
+    const release = this.#releaseLock;
+    this.#releaseLock = undefined;
+    release?.();
   }
 
   private packagesDirectory(): string {
@@ -697,10 +677,10 @@ export class ExtensionManager {
 
 async function exists(path: string): Promise<boolean> {
   try {
-    await Deno.stat(path);
+    await fs.stat(path);
     return true;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if (isNotFound(error)) {
       return false;
     }
     throw error;
@@ -708,14 +688,12 @@ async function exists(path: string): Promise<boolean> {
 }
 
 async function sealPackage(directory: string): Promise<void> {
-  for await (
-    const entry of walk(directory, {
-      includeDirs: true,
-      includeFiles: true,
-      includeSymlinks: false,
-    })
-  ) {
-    await Deno.chmod(entry.path, entry.isDirectory ? 0o700 : 0o400);
+  for await (const entry of walk(directory, {
+    includeDirs: true,
+    includeFiles: true,
+    includeSymlinks: false,
+  })) {
+    await fs.chmod(entry.path, entry.isDirectory() ? 0o700 : 0o400);
   }
 }
 
@@ -757,7 +735,8 @@ export function parseExtensionConfiguration(
   }
   const normalized: unknown = JSON.parse(serialized);
   if (
-    typeof normalized !== "object" || normalized === null ||
+    typeof normalized !== "object" ||
+    normalized === null ||
     Array.isArray(normalized)
   ) {
     throw new Error("Extension configuration must contain only JSON values.");
@@ -769,9 +748,8 @@ function isJsonValue(
   value: unknown,
   ancestors: Set<object>,
 ): value is JsonValue {
-  if (
-    value === null || typeof value === "string" || typeof value === "boolean"
-  ) return true;
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value !== "object") return false;
   if (ancestors.has(value)) return false;
@@ -779,7 +757,8 @@ function isJsonValue(
     !Array.isArray(value) &&
     Object.getPrototypeOf(value) !== Object.prototype &&
     Object.getPrototypeOf(value) !== null
-  ) return false;
+  )
+    return false;
   ancestors.add(value);
   const valid = (Array.isArray(value) ? value : Object.values(value)).every(
     (nested) => isJsonValue(nested, ancestors),
@@ -802,13 +781,13 @@ async function validateConfiguration(
     return;
   }
   const schemaPath = join(extensionDirectory, manifest.configurationSchema);
-  const info = await Deno.stat(schemaPath);
-  if (!info.isFile || info.size > 256 * 1024) {
+  const info = await fs.stat(schemaPath);
+  if (!info.isFile() || info.size > 256 * 1024) {
     throw new Error("Extension configuration schema is missing or too large.");
   }
   let schema: unknown;
   try {
-    schema = JSON.parse(await Deno.readTextFile(schemaPath));
+    schema = JSON.parse(await fs.readFile(schemaPath, "utf8"));
   } catch (error) {
     throw new Error("Extension configuration schema is invalid JSON.", {
       cause: error,

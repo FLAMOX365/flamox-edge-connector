@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "dist",
+    "sourceMap": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["runtime/**/*.ts", "cli/**/*.ts", "desktop/**/*.ts"],
+  "exclude": [
+    "**/*.spec.ts",
+    "**/dist",
+    "node_modules",
+    "desktop/src-tauri",
+    "desktop/resources"
+  ]
+}

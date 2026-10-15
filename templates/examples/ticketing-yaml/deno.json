@@ -1,7 +1,0 @@
-{
-  "name": "ticketing-yaml",
-  "version": "1.0.0",
-  "tasks": {
-    "check": "echo 'YAML functions - no type check needed'"
-  }
-}

@@ -1,5 +1,6 @@
-import { basename, join, resolve } from "@std/path";
-import type { JsonValue } from "../sdk/extension.ts";
+import * as fs from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { ExtensionBundle } from "../runtime/extension-bundle.ts";
 import { parseTrustedPublishers } from "../runtime/extension-integrity.ts";
 import { CloudClient } from "./cloud-client.ts";
@@ -32,7 +33,7 @@ Usage:
   extension login --token <publisher-token>
 
 The existing Edge Connector operator commands remain available through
-\`deno task extensions\`.`;
+\`yarn extensions\`.`;
 
 export async function runCli(
   args: readonly string[],
@@ -77,7 +78,8 @@ export async function runCli(
       automatic,
       ask,
     );
-    const directory = requestedDirectory ??
+    const directory =
+      requestedDirectory ??
       wizardValue(
         parsed,
         "directory",
@@ -119,11 +121,16 @@ export async function runCli(
       automatic,
       ask,
     );
-    const area = areaFlag(parsed) ??
+    const area =
+      areaFlag(parsed) ??
       (!automatic
         ? normalizeArea(
-          optionalWizardValue("Extension area (optional: telephony)", "", ask),
-        )
+            optionalWizardValue(
+              "Extension area (optional: telephony)",
+              "",
+              ask,
+            ),
+          )
         : undefined);
     if (!config.publisher) {
       const keyId = wizardValue(
@@ -145,13 +152,10 @@ export async function runCli(
         `Configured publisher key belongs to '${config.publisher.name}', not '${publisher}'.`,
       );
     }
-    const cloudUrl = textFlag(parsed, "cloud") ??
+    const cloudUrl =
+      textFlag(parsed, "cloud") ??
       (!automatic && !config.cloud?.url
-        ? optionalWizardValue(
-          "FLAMOX365 Cloud URL (optional)",
-          "",
-          ask,
-        )
+        ? optionalWizardValue("FLAMOX365 Cloud URL (optional)", "", ask)
         : config.cloud?.url);
     const cloudScope = scopeFlag(parsed) ?? config.cloud?.scope ?? "system";
     if (
@@ -183,8 +187,10 @@ export async function runCli(
     if (booleanFlag(parsed, "skip-pack") && publishRequested) {
       throw new Error("--publish cannot be combined with --skip-pack.");
     }
-    const packRequested = !booleanFlag(parsed, "skip-pack") &&
-      (automatic || publishRequested ||
+    const packRequested =
+      !booleanFlag(parsed, "skip-pack") &&
+      (automatic ||
+        publishRequested ||
         wizardConfirmation("Create a signed .fmx package now?", true, ask));
     let packaged: Awaited<ReturnType<typeof packageProject>> | undefined;
     if (packRequested) {
@@ -196,8 +202,11 @@ export async function runCli(
       console.log(`Created signed bundle '${packaged.path}'.`);
     }
     const accessToken = cloudToken(config);
-    const interactivePublish = !automatic && packaged &&
-      config.cloud?.url && accessToken &&
+    const interactivePublish =
+      !automatic &&
+      packaged &&
+      config.cloud?.url &&
+      accessToken &&
       wizardConfirmation(
         "Upload the release to FLAMOX365 as a draft now?",
         false,
@@ -230,8 +239,7 @@ export async function runCli(
     const config = await configStore.load();
     const directory = textFlag(parsed, "directory") ?? id;
     const displayName = textFlag(parsed, "name") ?? titleCase(id);
-    const publisher = textFlag(parsed, "publisher") ??
-      config.publisher?.name;
+    const publisher = textFlag(parsed, "publisher") ?? config.publisher?.name;
     if (!publisher) {
       throw new Error(
         "Publisher is required. Run 'extension publisher init' or pass --publisher.",
@@ -298,8 +306,9 @@ export async function runCli(
       ...current,
       cloud: {
         ...current.cloud,
-        accessToken: textFlag(parsed, "token") ??
-          Deno.env.get("EDGE_EXTENSION_CLOUD_TOKEN")?.trim() ??
+        accessToken:
+          textFlag(parsed, "token") ??
+          process.env["EDGE_EXTENSION_CLOUD_TOKEN"]?.trim() ??
           requiredTextFlag(parsed, "token"),
       },
     });
@@ -316,9 +325,7 @@ export async function runCli(
     case "validate": {
       exactFlags(parsed, []);
       const manifest = await validateProject(directory);
-      console.log(
-        `Extension '${manifest.id}' ${manifest.version} is valid.`,
-      );
+      console.log(`Extension '${manifest.id}' ${manifest.version} is valid.`);
       return;
     }
     case "test": {
@@ -443,7 +450,8 @@ async function inputValue(parsed: ParsedArguments): Promise<JsonValue> {
   const inline = textFlag(parsed, "input");
   const path = textFlag(parsed, "input-file");
   if (inline !== undefined) return parseJsonValue(inline);
-  if (path !== undefined) return parseJsonValue(await Deno.readTextFile(path));
+  if (path !== undefined)
+    return parseJsonValue(await fs.readFile(path, "utf8"));
   return null;
 }
 
@@ -510,7 +518,9 @@ function wizardConfirmation(
   const normalized = answer.trim().toLowerCase();
   if (!normalized) return fallback;
   if (
-    normalized === "y" || normalized === "yes" || normalized === "j" ||
+    normalized === "y" ||
+    normalized === "yes" ||
+    normalized === "j" ||
     normalized === "ja"
   ) {
     return true;
@@ -522,8 +532,10 @@ function wizardConfirmation(
 }
 
 function cloudToken(config: CliConfig): string | undefined {
-  return Deno.env.get("EDGE_EXTENSION_CLOUD_TOKEN")?.trim() ||
-    config.cloud?.accessToken;
+  return (
+    process.env["EDGE_EXTENSION_CLOUD_TOKEN"]?.trim() ||
+    config.cloud?.accessToken
+  );
 }
 
 async function publishBundle(
@@ -537,7 +549,7 @@ async function publishBundle(
     );
   }
   const trusted = parseTrustedPublishers(
-    JSON.parse(await Deno.readTextFile(config.publisher.trustPath)),
+    JSON.parse(await fs.readFile(config.publisher.trustPath, "utf8")),
   ).find((candidate) => candidate.keyId === config.publisher!.keyId);
   if (!trusted) {
     throw new Error("Configured publisher public key is missing.");
@@ -556,26 +568,27 @@ async function watchProject(
   directory: string,
   run: () => Promise<void>,
 ): Promise<void> {
-  const watcher = Deno.watchFs(directory);
+  const watcher = fs.watch(directory, { recursive: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     for await (const event of watcher) {
       if (
-        event.paths.every((path) =>
-          path.includes("/dist/") || path.includes("/.edge/") ||
-          path.includes("/.git/")
+        event.filename &&
+        /(?:^|[/\\])(?:dist|node_modules|\.edge|\.git)(?:[/\\]|$)/u.test(
+          event.filename,
         )
-      ) continue;
+      )
+        continue;
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(() => {
         void run().catch((error) =>
-          console.error(error instanceof Error ? error.message : error)
+          console.error(error instanceof Error ? error.message : error),
         );
       }, 150);
     }
   } finally {
     if (timer !== undefined) clearTimeout(timer);
-    watcher.close();
+    await watcher.return?.();
   }
 }
 
@@ -583,10 +596,7 @@ function exactPositionals(parsed: ParsedArguments, count: number): void {
   if (parsed.positionals.length !== count) invalidUsage();
 }
 
-function exactFlags(
-  parsed: ParsedArguments,
-  allowed: readonly string[],
-): void {
+function exactFlags(parsed: ParsedArguments, allowed: readonly string[]): void {
   for (const name of parsed.flags.keys()) {
     if (!allowed.includes(name)) {
       throw new Error(`Unsupported option '--${name}'.`);
@@ -628,9 +638,7 @@ function booleanFlag(parsed: ParsedArguments, name: string): boolean {
   return true;
 }
 
-function scopeFlag(
-  parsed: ParsedArguments,
-): "system" | "tenant" | undefined {
+function scopeFlag(parsed: ParsedArguments): "system" | "tenant" | undefined {
   const value = textFlag(parsed, "scope");
   if (value === undefined) return undefined;
   if (value !== "system" && value !== "tenant") {
@@ -640,23 +648,23 @@ function scopeFlag(
 }
 
 function titleCase(value: string): string {
-  return value.split(/[.-]/u)
+  return value
+    .split(/[.-]/u)
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
 }
 
 function slug(value: string): string {
-  const normalized = value.toLowerCase()
+  const normalized = value
+    .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-")
     .replace(/^-+|-+$/gu, "");
   return normalized || "publisher";
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null || typeof value === "boolean" ||
-    typeof value === "string"
-  ) return true;
+  if (value === null || typeof value === "boolean" || typeof value === "string")
+    return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
   if (typeof value === "object") {
@@ -671,9 +679,9 @@ function invalidUsage(): never {
 
 if (import.meta.main) {
   try {
-    await runCli(Deno.args);
+    await runCli(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
-    Deno.exit(1);
+    process.exit(1);
   }
 }

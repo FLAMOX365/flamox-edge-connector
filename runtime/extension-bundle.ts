@@ -1,5 +1,6 @@
-import { walk } from "@std/fs";
-import { dirname, isAbsolute, relative, resolve } from "@std/path";
+import * as fs from "node:fs/promises";
+import { walk } from "./files.ts";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   computeExtensionDigest,
   type ExtensionReleaseDescriptor,
@@ -30,7 +31,7 @@ export async function createExtensionBundle(
   sourceDirectory: string,
   releaseValue: unknown,
 ): Promise<ExtensionBundle> {
-  const source = await Deno.realPath(sourceDirectory);
+  const source = await fs.realpath(sourceDirectory);
   const release = parseExtensionReleaseDescriptor(releaseValue);
   const digest = await computeExtensionDigest(source);
   if (digest !== release.digest) {
@@ -38,15 +39,13 @@ export async function createExtensionBundle(
   }
   const files: ExtensionBundleFile[] = [];
   let totalBytes = 0;
-  for await (
-    const entry of walk(source, {
-      includeDirs: false,
-      includeSymlinks: true,
-      followSymlinks: false,
-    })
-  ) {
-    if (entry.isSymlink || !entry.isFile) {
-      if (entry.isSymlink) {
+  for await (const entry of walk(source, {
+    includeDirs: false,
+    includeSymlinks: true,
+    followSymlinks: false,
+  })) {
+    if (entry.isSymbolicLink() || !entry.isFile()) {
+      if (entry.isSymbolicLink()) {
         throw new Error("Extension bundles cannot contain symbolic links.");
       }
       continue;
@@ -54,7 +53,7 @@ export async function createExtensionBundle(
     if (files.length >= maximumPackageFiles) {
       throw new Error(`Extension bundle exceeds ${maximumPackageFiles} files.`);
     }
-    const bytes = await Deno.readFile(entry.path);
+    const bytes = await fs.readFile(entry.path);
     if (bytes.byteLength > maximumPackageFileBytes) {
       throw new Error(`Extension bundle file '${entry.path}' is too large.`);
     }
@@ -81,8 +80,7 @@ export async function writeExtensionBundle(
   path: string,
 ): Promise<void> {
   const parsed = parseExtensionBundle(bundle);
-  await Deno.writeTextFile(path, `${JSON.stringify(parsed)}\n`, {
-    create: true,
+  await fs.writeFile(path, `${JSON.stringify(parsed)}\n`, {
     mode: 0o600,
   });
 }
@@ -90,11 +88,11 @@ export async function writeExtensionBundle(
 export async function readExtensionBundle(
   path: string,
 ): Promise<ExtensionBundle> {
-  const info = await Deno.stat(path);
-  if (!info.isFile || info.size > maximumBundleFileBytes) {
+  const info = await fs.stat(path);
+  if (!info.isFile() || info.size > maximumBundleFileBytes) {
     throw new Error("Extension bundle is missing or too large.");
   }
-  return parseExtensionBundle(JSON.parse(await Deno.readTextFile(path)));
+  return parseExtensionBundle(JSON.parse(await fs.readFile(path, "utf8")));
 }
 
 /** Extracts a validated bundle into a new staging directory. */
@@ -103,7 +101,7 @@ export async function extractExtensionBundle(
   targetDirectory: string,
 ): Promise<ExtensionBundle> {
   const bundle = parseExtensionBundle(bundleValue);
-  await Deno.mkdir(targetDirectory, { recursive: false, mode: 0o700 });
+  await fs.mkdir(targetDirectory, { recursive: false, mode: 0o700 });
   const targetRoot = resolve(targetDirectory);
   try {
     for (const file of bundle.files) {
@@ -120,20 +118,20 @@ export async function extractExtensionBundle(
         throw new Error("Extension bundle path escapes its staging directory.");
       }
       const bytes = decodeBase64(file.contentBase64);
-      await Deno.mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-      await Deno.writeFile(destination, bytes, {
-        createNew: true,
+      await fs.mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+      await fs.writeFile(destination, bytes, {
+        flag: "wx",
         mode: 0o600,
       });
     }
-    if (await computeExtensionDigest(targetRoot) !== bundle.release.digest) {
+    if ((await computeExtensionDigest(targetRoot)) !== bundle.release.digest) {
       throw new Error(
         "Extracted extension bundle digest does not match release.",
       );
     }
     return bundle;
   } catch (error) {
-    await Deno.remove(targetRoot, { recursive: true }).catch(() => undefined);
+    await fs.rm(targetRoot, { recursive: true }).catch(() => undefined);
     throw error;
   }
 }
@@ -144,9 +142,11 @@ export function parseExtensionBundle(value: unknown): ExtensionBundle {
   if (
     value.schemaVersion !== 1 ||
     value.mediaType !== EXTENSION_BUNDLE_MEDIA_TYPE ||
-    !Array.isArray(value.files) || value.files.length === 0 ||
+    !Array.isArray(value.files) ||
+    value.files.length === 0 ||
     value.files.length > maximumPackageFiles
-  ) invalid();
+  )
+    invalid();
   const paths = new Set<string>();
   let totalBytes = 0;
   const files = value.files.map((nested) => {
@@ -176,11 +176,14 @@ function safeBundlePath(value: unknown): string {
   if (typeof value !== "string") invalid();
   const path = value.replaceAll("\\", "/");
   if (
-    path.length === 0 || path.length > 500 || path.startsWith("/") ||
-    path.split("/").some((segment) =>
-      segment === "" || segment === ".." || segment === "."
-    )
-  ) invalid();
+    path.length === 0 ||
+    path.length > 500 ||
+    path.startsWith("/") ||
+    path
+      .split("/")
+      .some((segment) => segment === "" || segment === ".." || segment === ".")
+  )
+    invalid();
   return path;
 }
 
@@ -209,7 +212,8 @@ function exactKeys(
   if (
     Object.keys(value).length !== keys.length ||
     keys.some((key) => !Object.hasOwn(value, key))
-  ) invalid();
+  )
+    invalid();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

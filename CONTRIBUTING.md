@@ -1,27 +1,27 @@
 # Contributing
 
-The project uses Deno 2.9.4 or newer and keeps the runtime, SDK, and generated
+The project uses Node.js 26.12.0, TypeScript 7.0.2 and Yarn 4.18.1 and keeps the runtime, SDK, and generated
 protocol models in one workspace. Fork the repository, create a focused branch,
 and keep each pull request small enough to review as one coherent change.
 
 Install the locked dependency graph before development:
 
 ```bash
-deno install --frozen
+yarn install --immutable
 ```
 
 Run the complete local gate before opening a pull request:
 
 ```bash
-deno task check
-deno task lint
-deno task test
-deno task fmt
-deno task audit
-deno task verify:generated
+yarn check
+yarn lint
+yarn test
+yarn fmt
+yarn audit
+yarn verify:generated
 ```
 
-Changes to `openapi/api.yml` require `deno task generate:api`. Never hand-edit
+Changes to `openapi/api.yml` require `yarn generate:api`. Never hand-edit
 `runtime/generated/`.
 
 Security-sensitive changes need focused tests for deny-by-default behavior,

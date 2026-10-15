@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import type { WebSocket } from "ws";
+import { test } from "node:test";
+import { assertEquals } from "../test/assert.ts";
 import { ConnectorRuntime, type ProtocolExecutor } from "./connector.ts";
 import type { EdgeConnectorMessageFrame } from "./generated/models.ts";
 import { createLogger } from "./logger.ts";
@@ -11,7 +13,7 @@ const silentLogger = createLogger("error", {
   warn: () => undefined,
 });
 
-Deno.test("ConnectorRuntime ignores unsupported inbound response frames", async () => {
+test("ConnectorRuntime ignores unsupported inbound response frames", async () => {
   const warnings: string[] = [];
   const runtime = createRuntime({
     warn: (...data: unknown[]) => {
@@ -34,7 +36,7 @@ Deno.test("ConnectorRuntime ignores unsupported inbound response frames", async 
   assertEquals(warnings, ["Ignoring unsupported inbound frame type: response"]);
 });
 
-Deno.test("ConnectorRuntime executes protocol executor for request frames", async () => {
+test("ConnectorRuntime executes protocol executor for request frames", async () => {
   const sentFrames: WritableFrame[] = [];
   const protocolExecutor = {
     execute: () =>
@@ -49,26 +51,31 @@ Deno.test("ConnectorRuntime executes protocol executor for request frames", asyn
     logger: silentLogger,
   });
 
-  await runtime.handleFrame({
-    type: "request",
-    requestId: "00000000-0000-4000-8000-000000000001",
-    request: { method: "GET", url: "/users" },
-  }, (frame) => {
-    sentFrames.push(frame);
-  });
-
-  assertEquals(sentFrames, [{
-    type: "response",
-    requestId: "00000000-0000-4000-8000-000000000001",
-    response: {
-      statusCode: 207,
-      headers: { "x-mode": ["function"] },
-      body: "function-response",
+  await runtime.handleFrame(
+    {
+      type: "request",
+      requestId: "00000000-0000-4000-8000-000000000001",
+      request: { method: "GET", url: "/users" },
     },
-  }]);
+    (frame) => {
+      sentFrames.push(frame);
+    },
+  );
+
+  assertEquals(sentFrames, [
+    {
+      type: "response",
+      requestId: "00000000-0000-4000-8000-000000000001",
+      response: {
+        statusCode: 207,
+        headers: { "x-mode": ["function"] },
+        body: "function-response",
+      },
+    },
+  ]);
 });
 
-Deno.test("ConnectorRuntime attaches to WebSocket messages and serializes responses", async () => {
+test("ConnectorRuntime attaches to WebSocket messages and serializes responses", async () => {
   const socket = new FakeSocket();
   const runtime = createRuntime();
 
@@ -84,11 +91,16 @@ Deno.test("ConnectorRuntime attaches to WebSocket messages and serializes respon
   );
   await nextTick();
 
-  assertEquals(socket.sent.map((frame) => JSON.parse(frame)), [{
-    type: "response",
-    requestId: "00000000-0000-4000-8000-000000000001",
-    response: { statusCode: 204 },
-  }]);
+  assertEquals(
+    socket.sent.map((frame) => JSON.parse(frame)),
+    [
+      {
+        type: "response",
+        requestId: "00000000-0000-4000-8000-000000000001",
+        response: { statusCode: 204 },
+      },
+    ],
+  );
 });
 
 function createRuntime(

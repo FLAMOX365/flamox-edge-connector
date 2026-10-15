@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/FLAMOX365/flamox-edge-connector/actions/workflows/ci.yml/badge.svg)](https://github.com/FLAMOX365/flamox-edge-connector/actions/workflows/ci.yml)
 
-Edge Connector is a standalone Deno service for a customer-controlled network or
+Edge Connector is a standalone Node.js 26 service for a customer-controlled network or
 DMZ. It preserves the complete Functions, YAML, proxy, SDK and WebSocket
 behavior of the proven upstream connector and adds a managed, tenant-bound
 Extension Store runtime on top.
@@ -27,7 +27,7 @@ State, command results and durable operational audit events.
 - JSON Schema configuration, explicit least-privilege grants, scoped encrypted
   secret delivery and exact network permission enforcement.
 - Durable remote command results and idempotent audit delivery.
-- An internal Deno Desktop app for pairing, native path selection, listener
+- An internal Tauri 2 desktop app for pairing, native path selection, listener
   control, status, extensions, local execution and publisher tooling.
 
 No FRITZ!Box implementation is bundled yet. FRITZ!Box/FritzFon is now an
@@ -36,15 +36,17 @@ reopened to add it.
 
 ## Run and verify
 
-Prerequisite: Deno 2.9.4 or newer.
+Use the Node.js version in `.node-version` and Yarn 4.18.1. TypeScript 7.0.2 is locked in `package.json`. Install Corepack 0.36.0 with npm when it is not already available. Extension execution also needs the OS prerequisites described in [Installation](docs/INSTALLATION.md#extension-isolation-prerequisites).
 
 ```bash
-deno task check
-deno task lint
-deno task test
-deno task audit
-deno task verify:generated
-deno task start
+yarn install --immutable
+yarn check
+yarn lint
+yarn test
+yarn audit
+yarn verify:generated
+yarn build
+yarn start
 ```
 
 The default listener is `127.0.0.1:8080` outside the container. `GET /health`
@@ -67,8 +69,8 @@ The internal Desktop app guides the same flow and removes the one-time code from
 its settings after successful pairing:
 
 ```bash
-deno task desktop:dev
-deno task desktop:build
+yarn desktop:dev
+yarn desktop:build
 ```
 
 See [Desktop test app](docs/DESKTOP.md).
@@ -76,10 +78,10 @@ See [Desktop test app](docs/DESKTOP.md).
 ## Extension development workflow
 
 ```bash
-deno task extension -- init ../my-extension
-deno task extension -- dev ../my-extension --once \
+yarn extension init ../my-extension
+yarn extension dev ../my-extension --once \
   --input-file ../my-extension/examples/show-message.json
-deno task extension -- publish ../my-extension
+yarn extension publish ../my-extension
 ```
 
 `init` asks for identity, publisher, version and optional FLAMOX365 Cloud
@@ -101,7 +103,7 @@ FLAMOX365 tenant / platform settings
   -> ExtensionManager
      -> signature + digest + manifest + schema + local-policy verification
      -> candidate health + atomic activation / rollback
-     -> isolated Deno worker with exact read/network/secret grants
+     -> isolated Node.js process with exact read/network/secret grants
   -> Observed State + command result + durable audit outbox
 ```
 
@@ -116,7 +118,7 @@ managed extension runtime.
 runtime/   Service host, legacy transports, control plane and extension runtime
 sdk/       Retained customer Functions SDK and extension contracts
 cli/       Extension project wizard, development, packaging and Cloud upload
-desktop/   Internal Deno Desktop pairing and test application
+desktop/   Internal Tauri 2 desktop pairing and test application
 schemas/   Manifest, release, policy and publisher schemas
 templates/ Service starter, legacy examples and extension starter
 docs/      Deployment, protocol, security and extension authoring

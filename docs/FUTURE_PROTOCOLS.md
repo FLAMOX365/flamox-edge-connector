@@ -1,7 +1,9 @@
 # Future Protocol Families
 
-The connector is currently HTTP-only at the wire, runtime, SDK, and declarative
-function levels. IMAP and SMTP are planned protocol families, but they are not
+The retained WebSocket protocol and operator Functions/YAML contract are
+HTTP-specific. Managed extension actions can also use grant-filtered native TCP
+through the SDK, as SQL Server does; this does not change the WebSocket frame
+contract. IMAP and SMTP are planned protocol families, but they are not
 implemented yet. Future support must be added as real protocol contracts instead
 of being tunneled through `HttpContext`, HTTP route files, or HTTP proxy mode.
 
@@ -91,7 +93,7 @@ The exact schema may differ, but the important requirements are:
 After changing the schema, regenerate models with:
 
 ```sh
-npx -y deno task --cwd runtime generate-api
+npx -y yarn --cwd runtime generate-api
 ```
 
 Then update `runtime/protocol.ts` type guards and tests so invalid protocol
@@ -346,9 +348,9 @@ Every new protocol family needs tests at the same layers as HTTP:
 Run the normal repo checks after adding a protocol:
 
 ```sh
-npx -y deno task check
-npx -y deno task lint
-npx -y deno task test
+npx -y yarn check
+npx -y yarn lint
+npx -y yarn test
 ```
 
 If templates import an unpublished SDK version, typecheck them with a temporary

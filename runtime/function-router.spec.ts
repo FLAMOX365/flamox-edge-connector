@@ -1,5 +1,8 @@
-import { assert, assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { assert, assertEquals } from "../test/assert.ts";
+import { dirname, join } from "node:path";
 import { HttpFunctionRouter } from "./function-router.ts";
 import { HttpFunctionScanner } from "./function-scanner.ts";
 import type { EdgeConnectorRequestFrame } from "./generated/models.ts";
@@ -13,7 +16,7 @@ const silentLogger = createLogger("error", {
   warn: () => undefined,
 });
 
-Deno.test("HttpFunctionRouter executes matched handlers with params, query, headers, body, and env", async () => {
+test("HttpFunctionRouter executes matched handlers with params, query, headers, body, and env", async () => {
   await usingTempDir(async (dir) => {
     await writeTextFile(
       join(dir, "users", "[id].ts"),
@@ -41,9 +44,14 @@ export async function POST(ctx) {
       }),
     );
     const postResponse = await router.execute(
-      createFrame("POST", "/users/42", {
-        "content-type": ["application/json"],
-      }, '{"name":"Ada"}'),
+      createFrame(
+        "POST",
+        "/users/42",
+        {
+          "content-type": ["application/json"],
+        },
+        '{"name":"Ada"}',
+      ),
     );
 
     assertEquals(getResponse.statusCode, 200);
@@ -61,7 +69,7 @@ export async function POST(ctx) {
   });
 });
 
-Deno.test("HttpFunctionRouter reports method and route mismatches", async () => {
+test("HttpFunctionRouter reports method and route mismatches", async () => {
   await usingTempDir(async (dir) => {
     await writeTextFile(
       join(dir, "users", "[id].ts"),
@@ -109,17 +117,17 @@ function createFrame(
 async function usingTempDir(
   run: (dir: string) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir();
+  const dir = await makeTempDirectory();
   try {
     await run(dir);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await fs.rm(dir, { recursive: true });
   }
 }
 
 async function writeTextFile(path: string, content: string): Promise<void> {
-  await Deno.mkdir(dirname(path), { recursive: true });
-  await Deno.writeTextFile(path, content.trimStart());
+  await fs.mkdir(dirname(path), { recursive: true });
+  await fs.writeFile(path, content.trimStart());
 }
 
 async function assertRuntimeError(

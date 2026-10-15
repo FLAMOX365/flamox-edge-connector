@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals, assertRejects, assertThrows } from "../test/assert.ts";
 import { loadConfig } from "./config.ts";
 import { ConnectorRuntime, type ProtocolExecutor } from "./connector.ts";
 import type {
@@ -31,7 +34,7 @@ const cloudConfig = () =>
     EDGE_CONNECTOR_CLIENT_SECRET: "client-secret",
   });
 
-Deno.test("health stays ok and the compatible inbound WebSocket endpoint is retained", async () => {
+test("health stays ok and the compatible inbound WebSocket endpoint is retained", async () => {
   const config = cloudConfig();
   const status = createRuntimeStatus();
   const handler = createHandler(createPassthroughRuntime(), config, status);
@@ -42,7 +45,7 @@ Deno.test("health stays ok and the compatible inbound WebSocket endpoint is reta
   assertEquals(handler(new Request("http://localhost/ws")).status, 426);
 });
 
-Deno.test("ready reflects the real WebSocket connection state", async () => {
+test("ready reflects the real WebSocket connection state", async () => {
   const config = cloudConfig();
   const status = createRuntimeStatus();
   const handler = createHandler(createPassthroughRuntime(), config, status);
@@ -67,7 +70,7 @@ Deno.test("ready reflects the real WebSocket connection state", async () => {
   });
 });
 
-Deno.test("ready is true when no WebSocket is configured (pure HTTP mode)", async () => {
+test("ready is true when no WebSocket is configured (pure HTTP mode)", async () => {
   const config = loadConfig({});
   const status = createRuntimeStatus();
   const handler = createHandler(createPassthroughRuntime(), config, status);
@@ -81,7 +84,7 @@ Deno.test("ready is true when no WebSocket is configured (pure HTTP mode)", asyn
   });
 });
 
-Deno.test("health fails only when the supervision loop is stale", async () => {
+test("health fails only when the supervision loop is stale", async () => {
   const config = cloudConfig();
   const status = createRuntimeStatus(0);
   let clock = 0;
@@ -104,7 +107,7 @@ Deno.test("health fails only when the supervision loop is stale", async () => {
   assertEquals((await stale.json()).status, "unhealthy");
 });
 
-Deno.test("validates configured URL protocols", () => {
+test("validates configured URL protocols", () => {
   assertThrows(
     () => loadConfig({ EDGE_CONNECTOR_WS_URL: "https://cloud.example/ws" }),
     Error,
@@ -112,7 +115,7 @@ Deno.test("validates configured URL protocols", () => {
   );
 });
 
-Deno.test("runs protocol executor for request frames", async () => {
+test("runs protocol executor for request frames", async () => {
   const sentFrames: WritableFrame[] = [];
   let executedUrl: string | undefined;
   const runtime = new ConnectorRuntime({
@@ -143,18 +146,20 @@ Deno.test("runs protocol executor for request frames", async () => {
   });
 
   assertEquals(executedUrl, "/internal/orders");
-  assertEquals(sentFrames, [{
-    type: "response",
-    requestId,
-    response: {
-      statusCode: 201,
-      headers: { "x-function": ["ok"] },
-      body: "called:/internal/orders",
+  assertEquals(sentFrames, [
+    {
+      type: "response",
+      requestId,
+      response: {
+        statusCode: 201,
+        headers: { "x-function": ["ok"] },
+        body: "called:/internal/orders",
+      },
     },
-  }]);
+  ]);
 });
 
-Deno.test("responds to heartbeat frames with heartbeat", async () => {
+test("responds to heartbeat frames with heartbeat", async () => {
   const sentFrames: WritableFrame[] = [];
   const runtime = createPassthroughRuntime();
   const heartbeatFrame: EdgeConnectorMessageFrame = {
@@ -170,7 +175,7 @@ Deno.test("responds to heartbeat frames with heartbeat", async () => {
   assertEquals(sentFrames[0].type, "heartbeat");
 });
 
-Deno.test("sends an error frame when protocol execution fails", async () => {
+test("sends an error frame when protocol execution fails", async () => {
   const sentFrames: WritableFrame[] = [];
   const runtime = new ConnectorRuntime({
     protocolExecutor: {
@@ -201,8 +206,8 @@ Deno.test("sends an error frame when protocol execution fails", async () => {
   );
 });
 
-Deno.test("a naked runtime rejects arbitrary requests and trusts no extension", async () => {
-  const dir = await Deno.makeTempDir();
+test("a naked runtime rejects arbitrary requests and trusts no extension", async () => {
+  const dir = await makeTempDirectory();
   const bundle = await createRuntimeBundle(
     loadConfig({ EDGE_CONNECTOR_DATA_DIRECTORY: dir }),
     silentLogger,
@@ -224,20 +229,20 @@ Deno.test("a naked runtime rejects arbitrary requests and trusts no extension", 
     );
   } finally {
     bundle.extensionManager.stop();
-    await Deno.remove(dir, { recursive: true });
+    await fs.rm(dir, { recursive: true });
   }
 });
 
-Deno.test("createProtocolExecutor retains original proxy and function modes", async () => {
+test("createProtocolExecutor retains original proxy and function modes", async () => {
   const proxy = await createProtocolExecutor(
     loadConfig({ EDGE_CONNECTOR_FUNCTIONS_DIR: "./does-not-exist" }),
     silentLogger,
   );
   assertEquals(proxy.mode, "http-proxy");
 
-  const directory = await Deno.makeTempDir();
+  const directory = await makeTempDirectory();
   try {
-    await Deno.writeTextFile(
+    await fs.writeFile(
       `${directory}/health.ts`,
       "export const GET = () => new Response('ok');\n",
     );
@@ -246,9 +251,12 @@ Deno.test("createProtocolExecutor retains original proxy and function modes", as
       silentLogger,
     );
     assertEquals(functions.mode, "http-functions");
-    assertEquals(functions.routes.map((route) => route.path), ["/health"]);
+    assertEquals(
+      functions.routes.map((route) => route.path),
+      ["/health"],
+    );
   } finally {
-    await Deno.remove(directory, { recursive: true });
+    await fs.rm(directory, { recursive: true });
   }
 });
 

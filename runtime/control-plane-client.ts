@@ -1,4 +1,4 @@
-import type { JsonValue } from "../sdk/extension.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type {
   ConnectorIdentity,
   ConnectorKeyPair,
@@ -58,15 +58,19 @@ export class ControlPlaneClient {
     displayName: string,
     keys: ConnectorKeyPair,
   ): Promise<ConnectorPairingResult> {
-    const value = await this.requestJson("edge/connectors/pair", {
-      method: "POST",
-      body: JSON.stringify({
-        schemaVersion: 1,
-        pairingCode,
-        displayName,
-        publicKey: keys.publicKey,
-      }),
-    }, false);
+    const value = await this.requestJson(
+      "edge/connectors/pair",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          schemaVersion: 1,
+          pairingCode,
+          displayName,
+          publicKey: keys.publicKey,
+        }),
+      },
+      false,
+    );
     if (!isRecord(value)) invalid("Pairing response");
     exactKeys(value, ["connectorId", "tenantId", "credentialSecret"]);
     return {
@@ -129,9 +133,10 @@ export class ControlPlaneClient {
     authenticated = true,
     maximumResponseBytes = 10 * 1024 * 1024,
   ): Promise<unknown> {
-    const url = pathOrUrl instanceof URL
-      ? pathOrUrl
-      : new URL(pathOrUrl.replace(/^\/+/, ""), this.#baseUrl);
+    const url =
+      pathOrUrl instanceof URL
+        ? pathOrUrl
+        : new URL(pathOrUrl.replace(/^\/+/, ""), this.#baseUrl);
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
     if (init.body !== undefined) {
@@ -201,7 +206,8 @@ function exactKeys(
   if (
     Object.keys(value).length !== keys.length ||
     keys.some((key) => !Object.hasOwn(value, key))
-  ) invalid("Object");
+  )
+    invalid("Object");
 }
 
 function identifier(value: unknown): string {

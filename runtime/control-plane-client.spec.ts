@@ -1,26 +1,31 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../test/assert.ts";
 import type { ConnectorIdentity } from "./connector-identity.ts";
 import { ControlPlaneClient } from "./control-plane-client.ts";
 
-Deno.test("ControlPlaneClient pairs without credentials and authenticates later requests", async () => {
+test("ControlPlaneClient pairs without credentials and authenticates later requests", async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = [];
   const fetcher: typeof fetch = (input, init) => {
     const url = String(input);
     requests.push({ url, init });
     if (url.endsWith("/edge/connectors/pair")) {
-      return Promise.resolve(Response.json({
-        connectorId: "019b3ea9-7770-7000-8000-000000000001",
-        tenantId: "42",
-        credentialSecret: "a-connector-secret-with-sufficient-length",
-      }));
+      return Promise.resolve(
+        Response.json({
+          connectorId: "019b3ea9-7770-7000-8000-000000000001",
+          tenantId: "42",
+          credentialSecret: "a-connector-secret-with-sufficient-length",
+        }),
+      );
     }
-    return Promise.resolve(Response.json({
-      schemaVersion: 1,
-      revision: 0,
-      publisherTrust: { schemaVersion: 1, publishers: [] },
-      extensionPolicy: { schemaVersion: 1, extensions: [] },
-      extensions: [],
-    }));
+    return Promise.resolve(
+      Response.json({
+        schemaVersion: 1,
+        revision: 0,
+        publisherTrust: { schemaVersion: 1, publishers: [] },
+        extensionPolicy: { schemaVersion: 1, extensions: [] },
+        extensions: [],
+      }),
+    );
   };
   const publicKey = { kty: "RSA", alg: "RSA-OAEP-256", n: "n", e: "AQAB" };
   const pairingClient = new ControlPlaneClient(
@@ -65,7 +70,7 @@ Deno.test("ControlPlaneClient pairs without credentials and authenticates later 
   );
 });
 
-Deno.test("ControlPlaneClient refuses artifact downloads from another origin", async () => {
+test("ControlPlaneClient refuses artifact downloads from another origin", async () => {
   const identity = {
     connectorId: "019b3ea9-7770-7000-8000-000000000001",
     tenantId: "42",

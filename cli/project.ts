@@ -1,7 +1,15 @@
-import { walk } from "@std/fs";
-import { basename, dirname, join, relative, resolve } from "@std/path";
+import { build } from "esbuild";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { executeCommand, type CommandResult } from "../runtime/command.ts";
+import { isNotFound } from "../runtime/files.ts";
+import { makeTempDirectory } from "../runtime/files.ts";
+import { readdirSync } from "node:fs";
+import * as fs from "node:fs/promises";
+import { walk } from "../runtime/files.ts";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import Ajv2020Module, { type AnySchema } from "ajv/dist/2020.js";
-import type { JsonValue } from "../sdk/extension.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import {
   createExtensionBundle,
   type ExtensionBundle,
@@ -18,22 +26,20 @@ import {
 } from "../runtime/extension-manifest.ts";
 import { resolveConfiguredNetworkTargets } from "../runtime/extension-policy.ts";
 import { signExtensionRelease } from "../runtime/extension-publisher.ts";
-import { ExtensionWorkerHost } from "../runtime/extension-worker-host.ts";
+import { ExtensionHost } from "../runtime/extension-host.ts";
+import { writeBundleLicenses } from "./licenses.ts";
 
 const projectIdentifierPattern = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/u;
-const extensionSdkSource =
-  "https://raw.githubusercontent.com/FLAMOX365/flamox-edge-connector/8140bcd622e7c3af9ac9d9af7fd7650b6f5310e7/sdk/mod.ts";
+const extensionSdkSource = `file:${dirname(dirname(fileURLToPath(import.meta.resolve("@edge-connector/sdk"))))}`;
 const maximumJsonSchemaBytes = 256 * 1024;
 const maximumStoreImageBytes = 2 * 1024 * 1024;
-const bundledEntrypoint = "runtime/extension.js";
-const storeImageMediaTypes: ReadonlyMap<string, string> = new Map(
-  [
-    ["store-image.jpeg", "image/jpeg"],
-    ["store-image.jpg", "image/jpeg"],
-    ["store-image.png", "image/png"],
-    ["store-image.webp", "image/webp"],
-  ] as const,
-);
+const bundledEntrypoint = "runtime/extension.mjs";
+const storeImageMediaTypes: ReadonlyMap<string, string> = new Map([
+  ["store-image.jpeg", "image/jpeg"],
+  ["store-image.jpg", "image/jpeg"],
+  ["store-image.png", "image/png"],
+  ["store-image.webp", "image/webp"],
+] as const);
 
 export type CreateProjectOptions = {
   readonly id: string;
@@ -74,36 +80,34 @@ export async function createProject(
   requiredText(options.publisher, "publisher");
   const version = options.version ?? "0.1.0";
   if (
-    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(
-      version,
-    )
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(version)
   ) {
     throw new Error("Extension version must be a semantic version.");
   }
   const target = resolve(options.directory);
   try {
-    await Deno.stat(target);
+    await fs.stat(target);
     throw new Error(`Target directory '${target}' already exists.`);
   } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+    if (!isNotFound(error)) throw error;
   }
-  await Deno.mkdir(join(target, "src"), { recursive: true, mode: 0o700 });
-  await Deno.mkdir(join(target, "translations"), {
+  await fs.mkdir(join(target, "src"), { recursive: true, mode: 0o700 });
+  await fs.mkdir(join(target, "translations"), {
     recursive: true,
     mode: 0o700,
   });
-  await Deno.mkdir(join(target, "examples"), { recursive: true, mode: 0o700 });
+  await fs.mkdir(join(target, "examples"), { recursive: true, mode: 0o700 });
   const files = scaffoldFiles({ ...options, version });
   try {
     for (const [path, content] of Object.entries(files)) {
-      await Deno.writeTextFile(join(target, path), content, {
-        createNew: true,
+      await fs.writeFile(join(target, path), content, {
+        flag: "wx",
         mode: 0o600,
       });
     }
     await installProjectDependencies(target);
   } catch (error) {
-    await Deno.remove(target, { recursive: true }).catch(() => undefined);
+    await fs.rm(target, { recursive: true }).catch(() => undefined);
     throw error;
   }
 }
@@ -111,37 +115,33 @@ export async function createProject(
 export async function validateProject(
   directory: string,
 ): Promise<ExtensionManifest> {
-  const root = await Deno.realPath(directory);
+  const root = await fs.realpath(directory);
   const manifest = await readExtensionManifest(root);
   await requireDependencyLock(root);
-  for (
-    const path of [
-      manifest.runtime.entrypoint,
-      manifest.configurationSchema,
-      manifest.configurationUiSchema,
-      manifest.notices,
-      ...manifest.actions.flatMap((action) => [
-        action.inputSchema,
-        action.outputSchema,
-      ]),
-      ...Object.values(manifest.translations),
-    ]
-  ) {
+  for (const path of [
+    manifest.runtime.entrypoint,
+    manifest.configurationSchema,
+    manifest.configurationUiSchema,
+    manifest.notices,
+    ...manifest.actions.flatMap((action) => [
+      action.inputSchema,
+      action.outputSchema,
+    ]),
+    ...Object.values(manifest.translations),
+  ]) {
     if (!path) continue;
-    const info = await Deno.stat(join(root, path));
-    if (!info.isFile) {
+    const info = await fs.stat(join(root, path));
+    if (!info.isFile()) {
       throw new Error(`Manifest resource '${path}' is not a file.`);
     }
   }
-  for (
-    const schemaPath of [
-      manifest.configurationSchema,
-      ...manifest.actions.flatMap((action) => [
-        action.inputSchema,
-        action.outputSchema,
-      ]),
-    ]
-  ) {
+  for (const schemaPath of [
+    manifest.configurationSchema,
+    ...manifest.actions.flatMap((action) => [
+      action.inputSchema,
+      action.outputSchema,
+    ]),
+  ]) {
     if (schemaPath) await validateJsonSchema(root, schemaPath);
   }
   await validateProjectTree(root);
@@ -155,14 +155,14 @@ export async function validateProject(
       host.stop();
     }
   } finally {
-    await Deno.remove(prepared.directory, { recursive: true });
+    await fs.rm(prepared.directory, { recursive: true });
   }
   return manifest;
 }
 
 async function validateStoreImage(root: string): Promise<void> {
-  const candidates = [...Deno.readDirSync(root)]
-    .filter((entry) => entry.isFile && entry.name.startsWith("store-image."))
+  const candidates = [...readdirSync(root, { withFileTypes: true })]
+    .filter((entry) => entry.isFile() && entry.name.startsWith("store-image."))
     .map((entry) => entry.name)
     .sort();
   if (candidates.length === 0) return;
@@ -177,11 +177,11 @@ async function validateStoreImage(root: string): Promise<void> {
     );
   }
   const path = join(root, name);
-  const info = await Deno.stat(path);
-  if (!info.isFile || info.size === 0 || info.size > maximumStoreImageBytes) {
+  const info = await fs.stat(path);
+  if (!info.isFile() || info.size === 0 || info.size > maximumStoreImageBytes) {
     throw new Error("The Store image is empty or exceeds 2 MiB.");
   }
-  const bytes = await Deno.readFile(path);
+  const bytes = await fs.readFile(path);
   if (!matchesStoreImageType(bytes, mediaType)) {
     throw new Error(`The Store image '${name}' does not match its file type.`);
   }
@@ -189,18 +189,27 @@ async function validateStoreImage(root: string): Promise<void> {
 
 function matchesStoreImageType(bytes: Uint8Array, mediaType: string): boolean {
   if (mediaType === "image/png") {
-    return bytes.length >= 8 &&
+    return (
+      bytes.length >= 8 &&
       [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
         (value, index) => bytes[index] === value,
-      );
+      )
+    );
   }
   if (mediaType === "image/jpeg") {
-    return bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
-      bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9;
+    return (
+      bytes.length >= 4 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes.at(-2) === 0xff &&
+      bytes.at(-1) === 0xd9
+    );
   }
-  return bytes.length >= 12 &&
+  return (
+    bytes.length >= 12 &&
     new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" &&
-    new TextDecoder().decode(bytes.subarray(8, 12)) === "WEBP";
+    new TextDecoder().decode(bytes.subarray(8, 12)) === "WEBP"
+  );
 }
 
 async function validateJsonSchema(
@@ -210,11 +219,11 @@ async function validateJsonSchema(
   const path = join(root, schemaPath);
   let schema: unknown;
   try {
-    const info = await Deno.stat(path);
-    if (!info.isFile || info.size > maximumJsonSchemaBytes) {
+    const info = await fs.stat(path);
+    if (!info.isFile() || info.size > maximumJsonSchemaBytes) {
       throw new Error("Schema resource is missing or too large.");
     }
-    schema = JSON.parse(await Deno.readTextFile(path));
+    schema = JSON.parse(await fs.readFile(path, "utf8"));
   } catch (error) {
     throw new Error(`JSON Schema '${schemaPath}' cannot be read.`, {
       cause: error,
@@ -239,30 +248,32 @@ async function validateJsonSchema(
 export async function testProject(directory: string): Promise<void> {
   await validateProject(directory);
   const testFiles: string[] = [];
-  for await (
-    const entry of walk(directory, {
-      includeDirs: false,
-      includeSymlinks: false,
-      skip: [/[/\\](?:dist|\.git|\.edge)(?:[/\\]|$)/u],
-    })
-  ) {
+  for await (const entry of walk(directory, {
+    includeDirs: false,
+    includeSymlinks: false,
+    skip: [/[/\\](?:dist|node_modules|\.yarn|\.git|\.edge)(?:[/\\]|$)/u],
+  })) {
     if (
-      entry.isFile &&
+      entry.isFile() &&
       /\.(?:spec|test)\.(?:ts|mts|js|mjs)$/u.test(entry.name)
-    ) testFiles.push(entry.path);
+    )
+      testFiles.push(entry.path);
   }
   if (testFiles.length === 0) {
     throw new Error("Extension project does not contain any test files.");
   }
   testFiles.sort();
-  const command = new Deno.Command("deno", {
-    args: ["test", "--frozen", ...testFiles],
-    cwd: directory,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const status = await command.spawn().status;
+  await typecheckProject(directory);
+  const status = await executeCommand(
+    process.execPath,
+    [
+      "--import",
+      fileURLToPath(import.meta.resolve("tsx")),
+      "--test",
+      ...testFiles,
+    ],
+    { cwd: directory, inherit: true },
+  );
   if (!status.success) {
     throw new Error(`Extension tests failed with exit code ${status.code}.`);
   }
@@ -272,12 +283,15 @@ export async function buildProject(
   directory: string,
   outputDirectory = join(directory, "dist"),
 ): Promise<BuildResult> {
-  const root = await Deno.realPath(directory);
+  const root = await fs.realpath(directory);
   const manifest = await validateProject(root);
   const nestedOutput = relative(resolve(directory), resolve(outputDirectory));
   if (
-    !nestedOutput || nestedOutput === ".." ||
-    nestedOutput.startsWith(`..${Deno.build.os === "windows" ? "\\" : "/"}`)
+    !nestedOutput ||
+    nestedOutput === ".." ||
+    nestedOutput.startsWith(
+      `..${(process.platform === "win32" ? "windows" : process.platform) === "windows" ? "\\" : "/"}`,
+    )
   ) {
     throw new Error("Build output must be a child of the extension project.");
   }
@@ -286,16 +300,16 @@ export async function buildProject(
     dirname(root),
     `.${basename(root)}-build-${crypto.randomUUID()}`,
   );
-  await Deno.remove(staging, { recursive: true }).catch((error) => {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  await fs.rm(staging, { recursive: true }).catch((error) => {
+    if (!isNotFound(error)) throw error;
   });
-  await Deno.mkdir(dirname(staging), { recursive: true, mode: 0o700 });
+  await fs.mkdir(dirname(staging), { recursive: true, mode: 0o700 });
   try {
     await copyProjectFiles(root, staging);
     const builtManifest = {
       ...manifest,
       runtime: {
-        kind: "deno-worker" as const,
+        kind: "node-process" as const,
         entrypoint: bundledEntrypoint,
       },
     };
@@ -303,8 +317,9 @@ export async function buildProject(
       root,
       manifest.runtime.entrypoint,
       join(staging, bundledEntrypoint),
+      manifest.notices,
     );
-    await Deno.writeTextFile(
+    await fs.writeFile(
       join(staging, "extension-manifest.json"),
       `${JSON.stringify(builtManifest, null, 2)}\n`,
       { mode: 0o600 },
@@ -315,65 +330,65 @@ export async function buildProject(
     } finally {
       host.stop();
     }
-    await Deno.remove(output, { recursive: true }).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fs.rm(output, { recursive: true }).catch((error) => {
+      if (!isNotFound(error)) throw error;
     });
-    await Deno.rename(staging, output);
+    await fs.rename(staging, output);
   } catch (error) {
-    await Deno.remove(staging, { recursive: true }).catch(() => undefined);
+    await fs.rm(staging, { recursive: true }).catch(() => undefined);
     throw error;
   }
   return {
     directory: output,
     manifest: {
       ...manifest,
-      runtime: { kind: "deno-worker", entrypoint: bundledEntrypoint },
+      runtime: { kind: "node-process", entrypoint: bundledEntrypoint },
     },
   };
 }
 
 async function copyProjectFiles(root: string, target: string): Promise<void> {
-  await Deno.mkdir(target, { recursive: false, mode: 0o700 });
-  for await (
-    const entry of walk(root, {
-      includeDirs: true,
-      includeSymlinks: true,
-      followSymlinks: false,
-      skip: [/[/\\](?:dist|\.git|\.edge|examples)(?:[/\\]|$)/u],
-    })
-  ) {
+  await fs.mkdir(target, { recursive: false, mode: 0o700 });
+  for await (const entry of walk(root, {
+    includeDirs: true,
+    includeSymlinks: true,
+    followSymlinks: false,
+    skip: [
+      /[/\\](?:dist|node_modules|\.yarn|\.git|\.edge|examples)(?:[/\\]|$)/u,
+    ],
+  })) {
     const nested = relative(root, entry.path);
     if (!nested) continue;
-    if (entry.isSymlink) {
+    if (entry.isSymbolicLink()) {
       throw new Error("Extension projects cannot contain symbolic links.");
     }
     if (/\.(?:ts|mts|js|mjs)$/u.test(entry.name)) {
       continue;
     }
     if (
-      entry.isFile &&
-      (
-        entry.name === ".gitignore" ||
+      entry.isFile() &&
+      (entry.name === ".gitignore" ||
         entry.name === "README.md" ||
-        entry.name === "deno.json" ||
-        entry.name === "deno.lock" ||
+        entry.name === "package.json" ||
+        entry.name === "tsconfig.json" ||
+        entry.name === "yarn.lock" ||
+        entry.name === ".yarnrc.yml" ||
         /^grant(?:[.-].*)?\.json$/u.test(entry.name) ||
         /(?:^|\.)(?:jwk|pem|key)$/iu.test(entry.name) ||
-        /^\.env(?:\.|$)/u.test(entry.name)
-      )
+        /^\.env(?:\.|$)/u.test(entry.name))
     ) {
       continue;
     }
     const destination = join(target, nested);
-    if (entry.isDirectory) {
-      await Deno.mkdir(destination, { recursive: true, mode: 0o700 });
-    } else if (entry.isFile) {
-      await Deno.mkdir(dirname(destination), {
+    if (entry.isDirectory()) {
+      await fs.mkdir(destination, { recursive: true, mode: 0o700 });
+    } else if (entry.isFile()) {
+      await fs.mkdir(dirname(destination), {
         recursive: true,
         mode: 0o700,
       });
-      await Deno.copyFile(entry.path, destination);
-      await Deno.chmod(destination, 0o600);
+      await fs.copyFile(entry.path, destination);
+      await fs.chmod(destination, 0o600);
     }
   }
 }
@@ -385,7 +400,7 @@ export async function packageProject(
   outputPath?: string,
 ): Promise<PackageResult> {
   const build = await buildProject(directory);
-  const privateKey = JSON.parse(await Deno.readTextFile(privateKeyPath));
+  const privateKey = JSON.parse(await fs.readFile(privateKeyPath, "utf8"));
   const release = await signExtensionRelease(
     build.directory,
     privateKey,
@@ -401,7 +416,7 @@ export async function packageProject(
         `${build.manifest.id}-${build.manifest.version}.fmx`,
       ),
   );
-  await Deno.mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await fs.mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeExtensionBundle(bundle, path);
   return { path, bundle };
 }
@@ -414,13 +429,13 @@ export async function executeDevelopmentAction(options: {
   readonly secrets?: Readonly<Record<string, string>>;
   readonly hostCapabilities?: ExtensionHostCapabilityProvider;
 }): Promise<JsonValue> {
-  const root = await Deno.realPath(options.directory);
+  const root = await fs.realpath(options.directory);
   const manifest = await validateProject(root);
   const prepared = await prepareBundledRuntime(root, manifest);
   const configuration = options.configuration ?? {};
   const action = options.action ?? manifest.actions[0]?.name;
   if (!action) throw new Error("Extension does not declare an action.");
-  const host = new ExtensionWorkerHost({
+  const host = new ExtensionHost({
     extensionDirectory: prepared.directory,
     manifest: prepared.manifest,
     grant: {
@@ -435,7 +450,8 @@ export async function executeDevelopmentAction(options: {
     secrets: {
       resolve: () => Promise.resolve(options.secrets ?? {}),
     },
-    hostCapabilities: options.hostCapabilities ??
+    hostCapabilities:
+      options.hostCapabilities ??
       new InteractiveExtensionHostCapabilityProvider(
         new NativeMessageBoxAdapter(),
       ),
@@ -448,19 +464,12 @@ export async function executeDevelopmentAction(options: {
     );
   } finally {
     host.stop();
-    await Deno.remove(prepared.directory, { recursive: true });
+    await fs.rm(prepared.directory, { recursive: true });
   }
 }
 
 async function installProjectDependencies(directory: string): Promise<void> {
-  const command = new Deno.Command("deno", {
-    args: ["install"],
-    cwd: directory,
-    stdin: "null",
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const output = await command.output();
+  const output = await executeCommand("yarn", ["install"], { cwd: directory });
   if (!output.success) {
     throw commandError("Dependency installation", output);
   }
@@ -470,30 +479,26 @@ async function requireDependencyLock(root: string): Promise<void> {
   let current = root;
   while (true) {
     try {
-      const info = await Deno.stat(join(current, "deno.lock"));
-      if (info.isFile) return;
+      const info = await fs.stat(join(current, "yarn.lock"));
+      if (info.isFile()) return;
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!isNotFound(error)) throw error;
     }
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
   }
-  throw new Error(
-    "Extension dependencies must be locked. Run 'deno install'.",
-  );
+  throw new Error("Extension dependencies must be locked. Run 'yarn install'.");
 }
 
 async function validateProjectTree(root: string): Promise<void> {
-  for await (
-    const entry of walk(root, {
-      includeDirs: false,
-      includeSymlinks: true,
-      followSymlinks: false,
-      skip: [/[/\\](?:dist|\.git|\.edge)(?:[/\\]|$)/u],
-    })
-  ) {
-    if (entry.isSymlink) {
+  for await (const entry of walk(root, {
+    includeDirs: false,
+    includeSymlinks: true,
+    followSymlinks: false,
+    skip: [/[/\\](?:dist|node_modules|\.yarn|\.git|\.edge)(?:[/\\]|$)/u],
+  })) {
+    if (entry.isSymbolicLink()) {
       throw new Error("Extension projects cannot contain symbolic links.");
     }
   }
@@ -502,25 +507,25 @@ async function validateProjectTree(root: string): Promise<void> {
 async function prepareBundledRuntime(
   root: string,
   manifest: ExtensionManifest,
-): Promise<
-  { readonly directory: string; readonly manifest: ExtensionManifest }
-> {
-  const directory = await Deno.makeTempDir({
-    prefix: "edge-extension-runtime-",
-  });
+): Promise<{
+  readonly directory: string;
+  readonly manifest: ExtensionManifest;
+}> {
+  const directory = await makeTempDirectory("edge-extension-runtime-");
   const bundledManifest: ExtensionManifest = {
     ...manifest,
-    runtime: { kind: "deno-worker", entrypoint: bundledEntrypoint },
+    runtime: { kind: "node-process", entrypoint: bundledEntrypoint },
   };
   try {
     await bundleEntrypoint(
       root,
       manifest.runtime.entrypoint,
       join(directory, bundledEntrypoint),
+      manifest.notices,
     );
     return { directory, manifest: bundledManifest };
   } catch (error) {
-    await Deno.remove(directory, { recursive: true }).catch(() => undefined);
+    await fs.rm(directory, { recursive: true }).catch(() => undefined);
     throw error;
   }
 }
@@ -529,35 +534,39 @@ async function bundleEntrypoint(
   root: string,
   entrypoint: string,
   outputPath: string,
+  noticePath?: string | null,
 ): Promise<void> {
-  await Deno.mkdir(dirname(outputPath), { recursive: true, mode: 0o700 });
-  const command = new Deno.Command("deno", {
-    args: [
-      "bundle",
-      "--check=all",
-      "--frozen",
-      "--platform=deno",
-      "--output",
-      outputPath,
-      entrypoint,
-    ],
-    cwd: root,
-    stdin: "null",
-    stdout: "piped",
-    stderr: "piped",
+  await fs.mkdir(dirname(outputPath), { recursive: true, mode: 0o700 });
+  await typecheckProject(root);
+  const result = await build({
+    absWorkingDir: root,
+    entryPoints: [entrypoint],
+    outfile: outputPath,
+    platform: "node",
+    target: "node26",
+    format: "esm",
+    bundle: true,
+    packages: "bundle",
+    metafile: true,
+    banner: {
+      js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+    },
+    logLevel: "silent",
   });
-  const output = await command.output();
-  if (!output.success) {
-    throw commandError("Extension bundling", output);
-  }
-  await Deno.chmod(outputPath, 0o600);
+  await writeBundleLicenses(
+    root,
+    join(dirname(outputPath), "THIRD_PARTY_LICENSES.txt"),
+    result.metafile,
+    noticePath,
+  );
+  await fs.chmod(outputPath, 0o600);
 }
 
 function developmentHost(
   directory: string,
   manifest: ExtensionManifest,
-): ExtensionWorkerHost {
-  return new ExtensionWorkerHost({
+): ExtensionHost {
+  return new ExtensionHost({
     extensionDirectory: directory,
     manifest,
     grant: {
@@ -570,10 +579,7 @@ function developmentHost(
   });
 }
 
-function commandError(
-  operation: string,
-  output: Deno.CommandOutput,
-): Error {
+function commandError(operation: string, output: CommandResult): Error {
   const detail = new TextDecoder().decode(output.stderr).trim();
   return new Error(
     `${operation} failed with exit code ${output.code}${
@@ -594,19 +600,22 @@ function scaffoldFiles(
     schemaVersion: 2,
     id: options.id,
     displayName: options.displayName,
-    description: options.description ??
+    description:
+      options.description ??
       "Displays a Hello World message on the connected system.",
     publisher: options.publisher,
     version: options.version,
-    runtime: { kind: "deno-worker", entrypoint: "src/main.ts" },
+    runtime: { kind: "node-process", entrypoint: "src/main.ts" },
     capabilities: ["host.ui.message-box"],
     permissions: { network: [], secrets: [] },
-    actions: [{
-      name: "show-message",
-      description: "Displays a native message box.",
-      idempotent: false,
-      timeoutSeconds: 30,
-    }],
+    actions: [
+      {
+        name: "show-message",
+        description: "Displays a native message box.",
+        idempotent: false,
+        timeoutSeconds: 30,
+      },
+    ],
     contributions: [],
     translations: {
       de: "translations/de.json",
@@ -617,99 +626,72 @@ function scaffoldFiles(
   };
   return {
     "extension-manifest.json": `${JSON.stringify(manifest, null, 2)}\n`,
-    "deno.json": `${
-      JSON.stringify(
-        {
-          tasks: {
-            check: "deno check src/main.ts src/main.spec.ts",
-            test: "deno test src/main.spec.ts",
-          },
-          imports: {
-            "@edge-connector/sdk": options.sdkSource ?? extensionSdkSource,
-            "@std/assert": "jsr:@std/assert@1.0.19",
-          },
-        },
-        null,
-        2,
-      )
-    }\n`,
-    ".gitignore": "dist/\n.edge/\n*.jwk\n",
-    "grant.dev.json": `${
-      JSON.stringify(
-        {
-          capabilities: ["host.ui.message-box"],
-          network: [],
-          secrets: [],
-        },
-        null,
-        2,
-      )
-    }\n`,
-    "configuration.schema.json": `${
-      JSON.stringify(
-        {
-          $schema: "https://json-schema.org/draft/2020-12/schema",
-          title: "Hello World configuration",
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            defaultTitle: {
-              type: "string",
-              title: "Default message title",
-              minLength: 1,
-              maxLength: 200,
-              default: "Hello from the Edge Connector",
-            },
-          },
-        },
-        null,
-        2,
-      )
-    }\n`,
-    "configuration.ui.json": `${
-      JSON.stringify(
-        {
+    ...projectToolchain(options),
+    ".gitignore":
+      "dist/\nnode_modules/\n.yarn/install-state.gz\n.edge/\n*.jwk\n",
+    "grant.dev.json": `${JSON.stringify(
+      {
+        capabilities: ["host.ui.message-box"],
+        network: [],
+        secrets: [],
+      },
+      null,
+      2,
+    )}\n`,
+    "configuration.schema.json": `${JSON.stringify(
+      {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        title: "Hello World configuration",
+        type: "object",
+        additionalProperties: false,
+        properties: {
           defaultTitle: {
-            "ui:placeholder": "Hello from the Edge Connector",
+            type: "string",
+            title: "Default message title",
+            minLength: 1,
+            maxLength: 200,
+            default: "Hello from the Edge Connector",
           },
         },
-        null,
-        2,
-      )
-    }\n`,
-    "examples/show-message.json": `${
-      JSON.stringify(
-        {
-          title: "Hello from the Edge Connector",
-          message: "The first extension is running.",
-          kind: "info",
+      },
+      null,
+      2,
+    )}\n`,
+    "configuration.ui.json": `${JSON.stringify(
+      {
+        defaultTitle: {
+          "ui:placeholder": "Hello from the Edge Connector",
         },
-        null,
-        2,
-      )
-    }\n`,
-    "translations/de.json": `${
-      JSON.stringify(
-        {
-          displayName: options.displayName,
-          description:
-            "Zeigt eine Hello-World-Nachricht auf dem verbundenen System an.",
-        },
-        null,
-        2,
-      )
-    }\n`,
-    "translations/en.json": `${
-      JSON.stringify(
-        {
-          displayName: options.displayName,
-          description:
-            "Displays a Hello World message on the connected system.",
-        },
-        null,
-        2,
-      )
-    }\n`,
+      },
+      null,
+      2,
+    )}\n`,
+    "examples/show-message.json": `${JSON.stringify(
+      {
+        title: "Hello from the Edge Connector",
+        message: "The first extension is running.",
+        kind: "info",
+      },
+      null,
+      2,
+    )}\n`,
+    "translations/de.json": `${JSON.stringify(
+      {
+        displayName: options.displayName,
+        description:
+          "Zeigt eine Hello-World-Nachricht auf dem verbundenen System an.",
+      },
+      null,
+      2,
+    )}\n`,
+    "translations/en.json": `${JSON.stringify(
+      {
+        displayName: options.displayName,
+        description: "Displays a Hello World message on the connected system.",
+      },
+      null,
+      2,
+    )}\n`,
     "src/main.ts": extensionMainSource,
     "src/main.spec.ts": extensionTestSource,
     "README.md": `# ${options.displayName}
@@ -737,11 +719,11 @@ function scaffoldTelephonyFiles(
     schemaVersion: 2,
     id: options.id,
     displayName: options.displayName,
-    description: options.description ??
-      "Provides telephony through the Edge Connector.",
+    description:
+      options.description ?? "Provides telephony through the Edge Connector.",
     publisher: options.publisher,
     version: options.version,
-    runtime: { kind: "deno-worker", entrypoint: "src/main.ts" },
+    runtime: { kind: "node-process", entrypoint: "src/main.ts" },
     capabilities: [
       "telephony.provider.health.read",
       "telephony.call.start",
@@ -755,18 +737,20 @@ function scaffoldTelephonyFiles(
       { name: "list-calls", idempotent: true, timeoutSeconds: 60 },
       { name: "health", idempotent: true, timeoutSeconds: 30 },
     ],
-    contributions: [{
-      id: "telephony-provider",
-      area: "telephony",
-      contract: "telephony.provider",
-      contractVersion: 1,
-      operations: {
-        startCall: "dial",
-        endCall: "hangup",
-        synchronizeCalls: "list-calls",
-        health: "health",
+    contributions: [
+      {
+        id: "telephony-provider",
+        area: "telephony",
+        contract: "telephony.provider",
+        contractVersion: 1,
+        operations: {
+          startCall: "dial",
+          endCall: "hangup",
+          synchronizeCalls: "list-calls",
+          health: "health",
+        },
       },
-    }],
+    ],
     translations: {
       de: "translations/de.json",
       en: "translations/en.json",
@@ -775,88 +759,69 @@ function scaffoldTelephonyFiles(
     configurationUiSchema: "configuration.ui.json",
     health: { action: "health", timeoutSeconds: 30 },
   };
-  const denoConfiguration = {
-    tasks: {
-      check: "deno check src/main.ts src/main.spec.ts",
-      test: "deno test src/main.spec.ts",
-    },
-    imports: {
-      "@edge-connector/sdk": options.sdkSource ?? extensionSdkSource,
-      "@std/assert": "jsr:@std/assert@1.0.19",
-    },
-  };
   return {
     "extension-manifest.json": `${JSON.stringify(manifest, null, 2)}\n`,
-    "deno.json": `${JSON.stringify(denoConfiguration, null, 2)}\n`,
-    ".gitignore": "dist/\n.edge/\n*.jwk\n",
-    "grant.dev.json": `${
-      JSON.stringify(
-        { capabilities: manifest.capabilities, network: [], secrets: [] },
-        null,
-        2,
-      )
-    }\n`,
-    "configuration.schema.json": `${
-      JSON.stringify(
-        {
-          $schema: "https://json-schema.org/draft/2020-12/schema",
-          title: "Telephony provider configuration",
-          type: "object",
-          additionalProperties: false,
-          properties: {},
+    ...projectToolchain(options),
+    ".gitignore":
+      "dist/\nnode_modules/\n.yarn/install-state.gz\n.edge/\n*.jwk\n",
+    "grant.dev.json": `${JSON.stringify(
+      { capabilities: manifest.capabilities, network: [], secrets: [] },
+      null,
+      2,
+    )}\n`,
+    "configuration.schema.json": `${JSON.stringify(
+      {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        title: "Telephony provider configuration",
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+      },
+      null,
+      2,
+    )}\n`,
+    "configuration.ui.json": `${JSON.stringify(
+      { schemaVersion: 1, sections: [], fields: {} },
+      null,
+      2,
+    )}\n`,
+    "examples/dial.json": `${JSON.stringify(
+      {
+        callIntentId: "00000000-0000-4000-8000-000000000000",
+        phoneNumber: "+4930123456",
+        actor: {
+          userId: "1",
+          address: "developer@example.com",
+          displayName: "Developer",
         },
-        null,
-        2,
-      )
-    }\n`,
-    "configuration.ui.json": `${
-      JSON.stringify({ schemaVersion: 1, sections: [], fields: {} }, null, 2)
-    }\n`,
-    "examples/dial.json": `${
-      JSON.stringify(
-        {
-          callIntentId: "00000000-0000-4000-8000-000000000000",
-          phoneNumber: "+4930123456",
-          actor: {
-            userId: "1",
-            address: "developer@example.com",
-            displayName: "Developer",
-          },
-        },
-        null,
-        2,
-      )
-    }\n`,
-    "translations/de.json": `${
-      JSON.stringify(
-        {
-          displayName: options.displayName,
-          description:
-            "Stellt Telefoniefunktionen über den Edge Connector bereit.",
-        },
-        null,
-        2,
-      )
-    }\n`,
-    "translations/en.json": `${
-      JSON.stringify(
-        {
-          displayName: options.displayName,
-          description: "Provides telephony through the Edge Connector.",
-        },
-        null,
-        2,
-      )
-    }\n`,
+      },
+      null,
+      2,
+    )}\n`,
+    "translations/de.json": `${JSON.stringify(
+      {
+        displayName: options.displayName,
+        description:
+          "Stellt Telefoniefunktionen über den Edge Connector bereit.",
+      },
+      null,
+      2,
+    )}\n`,
+    "translations/en.json": `${JSON.stringify(
+      {
+        displayName: options.displayName,
+        description: "Provides telephony through the Edge Connector.",
+      },
+      null,
+      2,
+    )}\n`,
     "src/main.ts": telephonyMainSource,
     "src/main.spec.ts": telephonyTestSource,
-    "README.md":
-      `# ${options.displayName}\n\nThis extension implements the versioned telephony provider contract.\n`,
+    "README.md": `# ${options.displayName}\n\nThis extension implements the versioned telephony provider contract.\n`,
   };
 }
 
-const telephonyMainSource =
-  `import { defineTelephonyProvider } from "@edge-connector/sdk";
+const telephonyMainSource = `import { defineTelephonyProvider } from "@edge-connector/sdk";
 
 export default defineTelephonyProvider({
   startCall: {
@@ -883,16 +848,14 @@ export default defineTelephonyProvider({
 });
 `;
 
-const telephonyTestSource = `import { assertEquals } from "@std/assert";
-import extension from "./main.ts";
+const telephonyTestSource = `import assert from "node:assert/strict";\nimport { test } from "node:test";\nimport extension from "./main.ts";
 
-Deno.test("telephony provider exposes every contract operation", () => {
-  assertEquals(Object.keys(extension.actions).sort(), ["dial", "hangup", "health", "list-calls"]);
+test("telephony provider exposes every contract operation", () => {
+  assert.deepEqual(Object.keys(extension.actions).sort(), ["dial", "hangup", "health", "list-calls"]);
 });
 `;
 
-const extensionMainSource =
-  `import { defineExtension, type JsonValue } from "@edge-connector/sdk";
+const extensionMainSource = `import { defineExtension, type JsonValue } from "@edge-connector/sdk";
 
 export function parseMessage(
   input: JsonValue,
@@ -933,10 +896,9 @@ export default defineExtension({
 });
 `;
 
-const extensionTestSource = `import { assertEquals } from "@std/assert";
-import extension from "./main.ts";
+const extensionTestSource = `import assert from "node:assert/strict";\nimport { test } from "node:test";\nimport extension from "./main.ts";
 
-Deno.test("show-message delegates to the authorized host", async () => {
+test("show-message delegates to the authorized host", async () => {
   const shown: unknown[] = [];
   const result = await extension.actions["show-message"]({
     requestId: "test",
@@ -955,17 +917,78 @@ Deno.test("show-message delegates to the authorized host", async () => {
     message: "World",
     kind: "info",
   });
-  assertEquals(shown, [{ title: "Hello", message: "World", kind: "info" }]);
-  assertEquals(result, { displayed: true });
+  assert.deepEqual(shown, [{ title: "Hello", message: "World", kind: "info" }]);
+  assert.deepEqual(result, { displayed: true });
 });
 `;
 
-function requiredText(
-  value: string,
-  label: string,
-  maximumLength = 200,
-): void {
+function requiredText(value: string, label: string, maximumLength = 200): void {
   if (!value.trim() || value.length > maximumLength) {
     throw new Error(`Extension ${label} is invalid.`);
   }
+}
+
+async function typecheckProject(directory: string): Promise<void> {
+  const require = createRequire(import.meta.url);
+  const compiler = join(
+    dirname(require.resolve("typescript/package.json")),
+    "bin",
+    "tsc",
+  );
+  const result = await executeCommand(
+    process.execPath,
+    [compiler, "--noEmit", "--project", join(directory, "tsconfig.json")],
+    { cwd: directory },
+  );
+  if (!result.success)
+    throw new Error(
+      `Extension type checking failed: ${new TextDecoder().decode(result.stdout)}${new TextDecoder().decode(result.stderr)}`,
+    );
+}
+
+function projectToolchain(
+  options: CreateProjectOptions & { readonly version: string },
+): Readonly<Record<string, string>> {
+  const source = options.sdkSource;
+  const sdk =
+    source?.startsWith("file:") && /\.(?:ts|js)$/u.test(source)
+      ? `file:${dirname(fileURLToPath(source))}`
+      : (source ?? extensionSdkSource);
+  const manifest = {
+    name: options.id,
+    version: options.version,
+    private: true,
+    type: "module",
+    packageManager: "yarn@4.18.1",
+    engines: { node: ">=26.0.0 <27" },
+    scripts: {
+      check: "tsc --noEmit",
+      test: "node --import tsx --test src/*.spec.ts",
+    },
+    dependencies: { "@edge-connector/sdk": sdk },
+    devDependencies: {
+      typescript: "7.0.2",
+      "@types/node": "26.6.5",
+      tsx: "4.23.15",
+    },
+  };
+  const config = {
+    compilerOptions: {
+      target: "ES2024",
+      module: "NodeNext",
+      moduleResolution: "NodeNext",
+      strict: true,
+      noEmit: true,
+      allowImportingTsExtensions: true,
+      skipLibCheck: true,
+      types: ["node"],
+      lib: ["ES2024", "DOM", "DOM.Iterable"],
+    },
+    include: ["src/**/*.ts"],
+  };
+  return {
+    "package.json": `${JSON.stringify(manifest, null, 2)}\n`,
+    "tsconfig.json": `${JSON.stringify(config, null, 2)}\n`,
+    ".yarnrc.yml": "nodeLinker: node-modules\nenableScripts: false\n",
+  };
 }

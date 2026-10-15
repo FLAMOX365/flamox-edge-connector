@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "runtime/**/*.ts",
+    "sdk/**/*.ts",
+    "cli/**/*.ts",
+    "desktop/**/*.ts",
+    "desktop/ui/app.js",
+    "test/**/*.ts",
+    "tools/**/*.ts"
+  ],
+  "exclude": [
+    "**/dist",
+    "node_modules",
+    "desktop/src-tauri",
+    "desktop/resources"
+  ]
+}

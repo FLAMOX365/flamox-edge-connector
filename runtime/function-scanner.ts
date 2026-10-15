@@ -1,3 +1,8 @@
+import { pathToFileURL as toFileUrl } from "node:url";
+import { environmentSnapshot } from "./environment.ts";
+import { isNotFound } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { importFunction } from "./function-loader.ts";
 /**
  * HTTP Function Scanner
  *
@@ -11,10 +16,10 @@
  * @module
  */
 
-import { extname, join, relative, resolve, toFileUrl } from "@std/path";
-import type { HttpContext, HttpHandler } from "../sdk/http.ts";
-import { HTTP_METHODS, isHttpRouteDefinition } from "../sdk/http.ts";
-import type { HttpMethod } from "../sdk/types.ts";
+import { extname, join, relative, resolve } from "node:path";
+import type { HttpContext, HttpHandler } from "@edge-connector/sdk/http";
+import { HTTP_METHODS, isHttpRouteDefinition } from "@edge-connector/sdk/http";
+import type { HttpMethod } from "@edge-connector/sdk/types";
 import type { RuntimeLogger } from "./logger.ts";
 import { createLogger } from "./logger.ts";
 import {
@@ -88,7 +93,7 @@ export class HttpFunctionScanner {
     env?: Record<string, string>;
   }) {
     this.logger = options?.logger ?? createLogger();
-    this.env = options?.env ?? Deno.env.toObject();
+    this.env = options?.env ?? environmentSnapshot();
   }
 
   /**
@@ -259,11 +264,11 @@ export class HttpFunctionScanner {
 
     try {
       // Add cache-busting query param based on file mtime
-      const stat = await Deno.stat(filePath);
+      const stat = await fs.stat(filePath);
       const cacheKey = stat.mtime?.getTime() ?? Date.now();
       const moduleUrl = `${toFileUrl(filePath).href}?mtime=${cacheKey}`;
 
-      const module = await import(moduleUrl) as HttpFunctionModule;
+      const module = (await importFunction(moduleUrl)) as HttpFunctionModule;
 
       const routeDefinition = isHttpRouteDefinition(module.default)
         ? module.default
@@ -313,7 +318,7 @@ export class HttpFunctionScanner {
     const handlers = new Map<HttpMethod, HttpHandler>();
 
     try {
-      const content = await Deno.readTextFile(filePath);
+      const content = await fs.readFile(filePath, "utf8");
       const config = parseYamlFunctionConfig(content, filePath);
 
       // Validate required fields
@@ -337,9 +342,10 @@ export class HttpFunctionScanner {
           method: ctx.req.method,
           url: ctx.req.url,
           headers: ctx.req.headers,
-          body: ctx.req.method !== "GET" && ctx.req.method !== "HEAD"
-            ? await ctx.req.body.text()
-            : null,
+          body:
+            ctx.req.method !== "GET" && ctx.req.method !== "HEAD"
+              ? await ctx.req.body.text()
+              : null,
           params: { ...ctx.req.params.all() },
         };
         return yamlHandler(yamlCtx);
@@ -347,9 +353,9 @@ export class HttpFunctionScanner {
 
       // Determine which methods to register
       const methods: HttpMethod[] = config.methods
-        ? config.methods.map((m) => m.toUpperCase() as HttpMethod).filter(
-          (m) => HTTP_METHODS.includes(m),
-        )
+        ? config.methods
+            .map((m) => m.toUpperCase() as HttpMethod)
+            .filter((m) => HTTP_METHODS.includes(m))
         : [...HTTP_METHODS]; // All methods by default
 
       for (const method of methods) {
@@ -381,7 +387,8 @@ export class HttpFunctionScanner {
 
     // Skip test files
     if (
-      path.includes(".test.") || path.includes(".spec.") ||
+      path.includes(".test.") ||
+      path.includes(".spec.") ||
       path.includes("_test.")
     ) {
       return false;
@@ -397,16 +404,18 @@ export class HttpFunctionScanner {
     dir: string,
   ): AsyncGenerator<{ name: string; path: string; isFile: boolean }> {
     try {
-      for await (const entry of Deno.readDir(dir)) {
+      for await (const entry of await fs.readdir(dir, {
+        withFileTypes: true,
+      })) {
         const fullPath = join(dir, entry.name);
-        if (entry.isDirectory) {
+        if (entry.isDirectory()) {
           yield* this.walkDirectory(fullPath);
-        } else if (entry.isFile) {
+        } else if (entry.isFile()) {
           yield { name: entry.name, path: fullPath, isFile: true };
         }
       }
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) {
+      if (!isNotFound(error)) {
         throw error;
       }
       // Directory doesn't exist, that's okay
@@ -418,10 +427,7 @@ type HttpFunctionModule = {
   default?: unknown;
 } & Partial<Record<HttpMethod, unknown>>;
 
-function compareRoutes(
-  a: RegisteredHttpRoute,
-  b: RegisteredHttpRoute,
-): number {
+function compareRoutes(a: RegisteredHttpRoute, b: RegisteredHttpRoute): number {
   return routePriority(b) - routePriority(a);
 }
 
@@ -431,10 +437,12 @@ function routePriority(route: RegisteredHttpRoute): number {
   }
 
   const segments = route.path.split("/").filter(Boolean);
-  const dynamicSegments = segments.filter((segment) => segment.startsWith(":"))
-    .length;
-  const catchAllSegments = segments.filter((segment) => segment.endsWith("*"))
-    .length;
+  const dynamicSegments = segments.filter((segment) =>
+    segment.startsWith(":"),
+  ).length;
+  const catchAllSegments = segments.filter((segment) =>
+    segment.endsWith("*"),
+  ).length;
 
   return segments.length * 100 - dynamicSegments * 10 - catchAllSegments * 50;
 }

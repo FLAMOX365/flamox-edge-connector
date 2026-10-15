@@ -5,15 +5,19 @@
 Run the CLI directly from the Edge Connector checkout:
 
 ```bash
-deno task extension -- help
+yarn extension help
 ```
 
-To create a standalone executable named `extension`:
+For the compiled CLI, build once and invoke Node.js directly:
 
 ```bash
-deno task extension:compile
-./cli/dist/extension help
+yarn build
+node dist/cli/main.js help
 ```
+
+The `extension` examples below refer to `yarn extension` from this checkout.
+Node.js 26 executes the service, TypeScript 7 type-checks and compiles projects,
+and esbuild creates the offline ESM extension artifact.
 
 ## Guided initialization
 
@@ -27,15 +31,15 @@ It asks for extension id, display name, description, publisher, semantic
 version, publisher key id and the optional FLAMOX365 Cloud URL. It then creates:
 
 - the strict `extension-manifest.json`;
-- a commit-pinned SDK dependency and typed worker entrypoint;
+- a locked SDK package and typed ESM entrypoint;
 - configuration and UI schemas;
 - German and English translation resources;
 - the exact local development grant;
 - example action input and automated tests;
-- Deno tasks, ignore rules and project documentation.
+- Yarn tasks, ignore rules and project documentation.
 
 The wizard validates the complete manifest and local import graph, starts the
-isolated worker, runs the tests, builds a clean `dist` tree, creates an Ed25519
+isolated process, runs the tests, builds a clean `dist` tree, creates an Ed25519
 publisher identity when needed and writes a signed `.fmx` artifact. The
 non-interactive equivalent for automation is:
 
@@ -66,14 +70,14 @@ extension init ./extensions/my-telephony-provider --yes \
 
 Use `extension create` only when scaffolding without the complete test/package
 workflow is intentional. The retained `templates/extension` directory and
-`deno task extensions` operator commands remain available for compatibility.
+`yarn extensions` operator commands remain available for compatibility.
 
 ## Manifest contract
 
 The signed `extension-manifest.json` declares:
 
 - stable extension id, publisher and semantic version;
-- Deno worker entrypoint;
+- `runtime.kind: "node-process"` and a local ESM entrypoint;
 - capabilities and exact static/configured network needs;
 - uppercase secret names;
 - declared actions, timeout, idempotency and optional health action;
@@ -86,17 +90,28 @@ grant from the manifest and validated configuration. Unknown capabilities,
 network targets or secrets are rejected.
 
 Manifest schema version 2 validates action inputs before any secret resolution
-or worker execution and validates action outputs before returning them. An area
+or process execution and validates action outputs before returning them. An area
 contribution owns its operation schemas; an extension cannot replace those
 schemas with weaker action-local contracts.
 
-Runtime dependencies are declared in `deno.json` and resolved through the
-checked-in `deno.lock`. The Edge Connector SDK is referenced from a specific
-commit of the Edge Connector GitHub repository; extension projects do not copy
-its source. JSR, npm and commit-pinned HTTPS dependencies are allowed during
-development and packaging. `extension build` bundles the complete graph into a
-single local worker module, so installed extensions never fetch executable code
-from the internet.
+Sign and pack the compiled `dist` package, rather than a folder of uncompiled
+TypeScript sources. The Desktop publisher tools also expect this compiled
+package directory.
+
+Runtime dependencies are npm packages declared in `package.json` and resolved
+through a checked-in `yarn.lock`. The scaffold references the SDK package from
+the connector checkout used to create it; use a pinned source checkout when
+sharing the project. In the extensions catalog this source is the pinned Git
+submodule. Run `yarn install` when dependencies change. URL/JSR imports and
+runtime downloads of executable code are unsupported.
+
+`extension build` type-checks with TypeScript 7, bundles the complete dependency
+graph for Node.js 26 into `runtime/extension.mjs`, and starts that artifact in the
+same sandbox used for installation. The installed extension needs no package
+manager, transpiler or online dependency resolver. Native addons and subprocesses
+are unavailable. HTTP clients use the authenticated per-extension proxy;
+native TCP drivers must use `connectTcp` from `@edge-connector/sdk/tcp` rather
+than opening direct sockets. The SQL Server reference uses this with Tedious.
 
 An extension may place exactly one Store-card image at its project root. Name it
 `store-image.png`, `store-image.jpg`, `store-image.jpeg` or `store-image.webp`
@@ -116,7 +131,7 @@ extension pack ./extensions/my-extension
 
 `dev` watches the project unless `--once` is supplied. It executes the same
 bundled module that is placed in the `.fmx`. Host functions such as a native
-message box remain brokered by the Edge Connector; the isolated worker never
+message box remain brokered by the Edge Connector; the isolated process never
 receives process, FFI or unrestricted filesystem permissions.
 
 Publisher private keys live with owner-only permissions below the local CLI
@@ -159,7 +174,7 @@ write-only and encrypted at rest in FLAMOX365, then encrypted again to the
 target connector in Desired State.
 
 Reconfiguration uses the same schema and grant checks as first installation. An
-update is staged and health-checked before it replaces an active worker. The
+update is staged and health-checked before it replaces an active process. The
 previous verified revision remains available for rollback.
 
 ## Local development

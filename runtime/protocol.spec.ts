@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../test/assert.ts";
 import type { EdgeConnectorMessageFrame } from "./generated/models.ts";
 import {
   createErrorFrame,
@@ -11,7 +12,7 @@ import {
 } from "./protocol.ts";
 import { RuntimeError } from "./runtime-error.ts";
 
-Deno.test("parseMessageFrame parses request and heartbeat frames", () => {
+test("parseMessageFrame parses request and heartbeat frames", () => {
   const requestFrame: EdgeConnectorMessageFrame = {
     type: "request",
     requestId: "00000000-0000-4000-8000-000000000001",
@@ -31,7 +32,7 @@ Deno.test("parseMessageFrame parses request and heartbeat frames", () => {
   assertEquals(parsedHeartbeat, heartbeatFrame);
 });
 
-Deno.test("parseMessageFrame rejects malformed frames", () => {
+test("parseMessageFrame rejects malformed frames", () => {
   assertThrows(
     () => parseMessageFrame(new Uint8Array()),
     RuntimeError,
@@ -70,7 +71,7 @@ Deno.test("parseMessageFrame rejects malformed frames", () => {
   );
 });
 
-Deno.test("frame factories create serializable outbound frames", () => {
+test("frame factories create serializable outbound frames", () => {
   const heartbeat = createHeartbeatFrame();
   const response = createResponseFrame("request-1", {
     statusCode: 204,

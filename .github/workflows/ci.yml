@@ -1,56 +1,57 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   verify:
-    name: Verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Set up Deno
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          deno-version: v2.9.4
-
-      - name: Install locked dependencies
-        run: deno install --frozen
-
-      - name: Check formatting
-        run: deno task fmt
-
-      - name: Lint
-        run: deno task lint
-
-      - name: Type-check
-        run: deno task check
-
-      - name: Test
-        run: deno task test
-
-      - name: Audit dependencies
-        run: deno task audit
-
-      - name: Verify generated API models
-        run: deno task verify:generated
-
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install package manager
+        run: npm install --global corepack@0.36.0 && corepack enable
+      - run: yarn install --immutable
+      - name: Linux sandbox and desktop prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap socat ripgrep libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libssl-dev build-essential file librsvg2-dev patchelf
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Provision Windows sandbox account and WFP rules
+        if: runner.os == 'Windows'
+        run: yarn exec srt windows-install
+      - run: yarn fmt
+      - run: yarn lint
+      - run: yarn check
+      - run: yarn test
+      - run: yarn check:templates
+      - run: yarn audit
+      - run: yarn verify:generated
+      - name: Compile native desktop host without publishing
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          yarn desktop:build --no-bundle
       - name: Build container
+        if: runner.os == 'Linux'
         run: docker build --tag edge-connector:verify .

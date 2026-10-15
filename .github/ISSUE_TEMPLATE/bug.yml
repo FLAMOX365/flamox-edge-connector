@@ -19,8 +19,8 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Deno version, operating system, and deployment form.
-      placeholder: Deno 2.9.4, Ubuntu 24.04, container
+      description: Node.js version, operating system, and deployment form.
+      placeholder: Node.js 26.12.0, Ubuntu 24.04, container
     validations:
       required: true
   - type: textarea

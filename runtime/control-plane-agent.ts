@@ -21,6 +21,7 @@ import { RuntimeError } from "./runtime-error.ts";
 import { delay } from "./websocket-client.ts";
 
 export type ControlPlaneAgentDependencies = {
+  readonly onStateChanged?: () => void;
   readonly manager: ExtensionManager;
   readonly verifier: ManagedExtensionReleaseVerifier;
   readonly policy: ManagedExtensionPolicy;
@@ -43,6 +44,7 @@ export class ControlPlaneAgent {
     private readonly audit: ConnectorAuditLog,
     private readonly pollIntervalMs: number,
     private readonly logger: RuntimeLogger,
+    private readonly onStateChanged: () => void = () => undefined,
   ) {}
 
   async run(signal: AbortSignal): Promise<void> {
@@ -50,17 +52,20 @@ export class ControlPlaneAgent {
       try {
         await this.runOnce();
       } catch (error) {
-        this.#lastErrorCode = error instanceof RuntimeError
-          ? error.code
-          : "CONTROL_PLANE_SYNC_FAILED";
-        this.#lastErrorMessage = error instanceof Error
-          ? error.message.slice(0, 500)
-          : "Control-plane synchronization failed.";
+        this.#lastErrorCode =
+          error instanceof RuntimeError
+            ? error.code
+            : "CONTROL_PLANE_SYNC_FAILED";
+        this.#lastErrorMessage =
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : "Control-plane synchronization failed.";
         this.logger.error(
           "Managed control-plane synchronization failed",
           error,
         );
       }
+      this.onStateChanged();
       await delay(this.pollIntervalMs, signal);
     }
   }
@@ -97,6 +102,7 @@ export class ControlPlaneAgent {
     this.#lastSuccessfulSyncAt = new Date().toISOString();
     this.#lastErrorCode = null;
     this.#lastErrorMessage = null;
+    this.onStateChanged();
   }
 
   state() {
@@ -157,9 +163,8 @@ export class ControlPlaneAgent {
         output,
       };
     } catch (error) {
-      const errorCode = error instanceof RuntimeError
-        ? error.code
-        : "EXTENSION_COMMAND_FAILED";
+      const errorCode =
+        error instanceof RuntimeError ? error.code : "EXTENSION_COMMAND_FAILED";
       await this.audit.record(
         "extension.command",
         "FAILED",
@@ -172,9 +177,10 @@ export class ControlPlaneAgent {
         commandId: command.commandId,
         status: "FAILED",
         errorCode,
-        errorMessage: error instanceof RuntimeError
-          ? error.message
-          : "Extension command execution failed.",
+        errorMessage:
+          error instanceof RuntimeError
+            ? error.message
+            : "Extension command execution failed.",
       };
     }
   }
@@ -247,5 +253,6 @@ async function createPairedAgent(
     audit,
     config.managementPollIntervalMs,
     logger,
+    dependencies.onStateChanged,
   );
 }

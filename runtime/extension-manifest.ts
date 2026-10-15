@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 export const EXTENSION_MANIFEST_FILE = "extension-manifest.json";
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 2;
 
@@ -45,7 +46,7 @@ export type ExtensionManifest = {
   readonly publisher: string;
   readonly version: string;
   readonly runtime: {
-    readonly kind: "deno-worker";
+    readonly kind: "node-process";
     readonly entrypoint: string;
   };
   readonly capabilities: readonly string[];
@@ -105,9 +106,9 @@ export function parseExtensionManifest(value: unknown): ExtensionManifest {
 
   if (root.schemaVersion !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
     throw new Error(
-      `Unsupported extension manifest schema version '${
-        String(root.schemaVersion)
-      }'.`,
+      `Unsupported extension manifest schema version '${String(
+        root.schemaVersion,
+      )}'.`,
     );
   }
 
@@ -124,34 +125,39 @@ export function parseExtensionManifest(value: unknown): ExtensionManifest {
     "Extension capabilities",
   );
   const actions = parseActions(root.actions);
-  const contributions = root.contributions === undefined
-    ? []
-    : parseContributions(root.contributions, actions, capabilities);
+  const contributions =
+    root.contributions === undefined
+      ? []
+      : parseContributions(root.contributions, actions, capabilities);
   const actionNames = new Set(actions.map((action) => action.name));
-  const health = root.health === undefined
-    ? undefined
-    : parseHealth(root.health, actionNames);
-  const configurationSchema = root.configurationSchema === undefined
-    ? undefined
-    : safeRelativePath(root.configurationSchema, "Configuration schema", [
-      ".json",
-    ]);
-  const configurationUiSchema = root.configurationUiSchema === undefined
-    ? undefined
-    : safeRelativePath(
-      root.configurationUiSchema,
-      "Configuration UI schema",
-      [".json"],
-    );
-  const translations = root.translations === undefined
-    ? {}
-    : parseTranslations(root.translations);
-  const notices = root.notices === undefined
-    ? undefined
-    : safeRelativePath(root.notices, "Third-party notices", [".txt", ".md"]);
-  const lifecycle = root.lifecycle === undefined
-    ? undefined
-    : parseLifecycle(root.lifecycle, actionNames);
+  const health =
+    root.health === undefined
+      ? undefined
+      : parseHealth(root.health, actionNames);
+  const configurationSchema =
+    root.configurationSchema === undefined
+      ? undefined
+      : safeRelativePath(root.configurationSchema, "Configuration schema", [
+          ".json",
+        ]);
+  const configurationUiSchema =
+    root.configurationUiSchema === undefined
+      ? undefined
+      : safeRelativePath(
+          root.configurationUiSchema,
+          "Configuration UI schema",
+          [".json"],
+        );
+  const translations =
+    root.translations === undefined ? {} : parseTranslations(root.translations);
+  const notices =
+    root.notices === undefined
+      ? undefined
+      : safeRelativePath(root.notices, "Third-party notices", [".txt", ".md"]);
+  const lifecycle =
+    root.lifecycle === undefined
+      ? undefined
+      : parseLifecycle(root.lifecycle, actionNames);
 
   return {
     schemaVersion: EXTENSION_MANIFEST_SCHEMA_VERSION,
@@ -181,11 +187,11 @@ export async function readExtensionManifest(
   const path = `${extensionDirectory}/${EXTENSION_MANIFEST_FILE}`;
   let parsed: unknown;
   try {
-    const info = await Deno.stat(path);
-    if (!info.isFile || info.size > 256 * 1024) {
+    const info = await fs.stat(path);
+    if (!info.isFile() || info.size > 256 * 1024) {
       throw new Error("Extension manifest is missing or too large.");
     }
-    parsed = JSON.parse(await Deno.readTextFile(path));
+    parsed = JSON.parse(await fs.readFile(path, "utf8"));
   } catch (error) {
     throw new Error(`Unable to read extension manifest '${path}'.`, {
       cause: error,
@@ -197,16 +203,17 @@ export async function readExtensionManifest(
 function parseRuntime(value: unknown): ExtensionManifest["runtime"] {
   const runtime = record(value, "Extension runtime");
   exactKeys(runtime, ["kind", "entrypoint"], [], "Extension runtime");
-  if (runtime.kind !== "deno-worker") {
-    throw new Error("Extension runtime kind must be 'deno-worker'.");
+  if (runtime.kind !== "node-process") {
+    throw new Error("Extension runtime kind must be 'node-process'.");
   }
   return {
-    kind: "deno-worker",
-    entrypoint: safeRelativePath(
-      runtime.entrypoint,
-      "Extension entrypoint",
-      [".js", ".mjs", ".ts", ".mts"],
-    ),
+    kind: "node-process",
+    entrypoint: safeRelativePath(runtime.entrypoint, "Extension entrypoint", [
+      ".js",
+      ".mjs",
+      ".ts",
+      ".mts",
+    ]),
   };
 }
 
@@ -241,9 +248,10 @@ function parsePermissions(value: unknown): ExtensionManifest["permissions"] {
       );
     }
   }
-  const configuredNetwork = permissions.configuredNetwork === undefined
-    ? []
-    : parseConfiguredNetwork(permissions.configuredNetwork);
+  const configuredNetwork =
+    permissions.configuredNetwork === undefined
+      ? []
+      : parseConfiguredNetwork(permissions.configuredNetwork);
   return { network, configuredNetwork, secrets };
 }
 
@@ -270,9 +278,13 @@ function parseConfiguredNetwork(
     );
     if (
       !configurationPointer.startsWith("/") ||
-      configurationPointer.split("/").slice(1).some((segment) =>
-        segment.length === 0 || !/^[A-Za-z0-9_-]+$/u.test(segment)
-      )
+      configurationPointer
+        .split("/")
+        .slice(1)
+        .some(
+          (segment) =>
+            segment.length === 0 || !/^[A-Za-z0-9_-]+$/u.test(segment),
+        )
     ) {
       throw new Error("Configured network permission pointer is invalid.");
     }
@@ -283,8 +295,9 @@ function parseConfiguredNetwork(
     if (
       !Array.isArray(permission.allowedPorts) ||
       permission.allowedPorts.length === 0 ||
-      permission.allowedPorts.some((port) =>
-        !Number.isInteger(port) || Number(port) < 1 || Number(port) > 65_535
+      permission.allowedPorts.some(
+        (port) =>
+          !Number.isInteger(port) || Number(port) < 1 || Number(port) > 65_535,
       )
     ) {
       throw new Error("Configured network permission ports are invalid.");
@@ -361,12 +374,15 @@ function parseActions(value: unknown): readonly ExtensionActionManifest[] {
     names.add(name);
     return {
       name,
-      description: action.description === undefined ? undefined : text(
-        action.description,
-        `Extension action '${name}' description`,
-        1,
-        500,
-      ),
+      description:
+        action.description === undefined
+          ? undefined
+          : text(
+              action.description,
+              `Extension action '${name}' description`,
+              1,
+              500,
+            ),
       idempotent: boolean(
         action.idempotent,
         `Extension action '${name}' idempotent`,
@@ -377,20 +393,22 @@ function parseActions(value: unknown): readonly ExtensionActionManifest[] {
         1,
         120,
       ),
-      inputSchema: action.inputSchema === undefined
-        ? undefined
-        : safeRelativePath(
-          action.inputSchema,
-          `Extension action '${name}' input schema`,
-          [".json"],
-        ),
-      outputSchema: action.outputSchema === undefined
-        ? undefined
-        : safeRelativePath(
-          action.outputSchema,
-          `Extension action '${name}' output schema`,
-          [".json"],
-        ),
+      inputSchema:
+        action.inputSchema === undefined
+          ? undefined
+          : safeRelativePath(
+              action.inputSchema,
+              `Extension action '${name}' input schema`,
+              [".json"],
+            ),
+      outputSchema:
+        action.outputSchema === undefined
+          ? undefined
+          : safeRelativePath(
+              action.outputSchema,
+              `Extension action '${name}' output schema`,
+              [".json"],
+            ),
     };
   });
 }
@@ -438,16 +456,14 @@ function parseContributions(
       "telephony.call.end",
       "telephony.call-history.read",
     ];
-    const missingCapabilities = requiredCapabilities.filter((capability) =>
-      !capabilities.includes(capability)
+    const missingCapabilities = requiredCapabilities.filter(
+      (capability) => !capabilities.includes(capability),
     );
     if (missingCapabilities.length > 0) {
       throw new Error(
-        `Extension contribution '${id}' is missing required capabilities: ${
-          missingCapabilities.join(
-            ", ",
-          )
-        }.`,
+        `Extension contribution '${id}' is missing required capabilities: ${missingCapabilities.join(
+          ", ",
+        )}.`,
       );
     }
     const operations = record(
@@ -578,7 +594,7 @@ function identifier(value: unknown, label: string): string {
 
 function uniqueIdentifiers(value: unknown, label: string): readonly string[] {
   return uniqueStrings(value, label).map((nested, index) =>
-    identifier(nested, `${label} ${index}`)
+    identifier(nested, `${label} ${index}`),
   );
 }
 
@@ -587,7 +603,7 @@ function uniqueStrings(value: unknown, label: string): readonly string[] {
     throw new Error(`${label} must be an array.`);
   }
   const result = value.map((nested, index) =>
-    text(nested, `${label} ${index}`, 1, 300)
+    text(nested, `${label} ${index}`, 1, 300),
   );
   if (new Set(result).size !== result.length) {
     throw new Error(`${label} must not contain duplicates.`);
@@ -627,7 +643,8 @@ function boundedInteger(
   maximum: number,
 ): number {
   if (
-    !Number.isInteger(value) || Number(value) < minimum ||
+    !Number.isInteger(value) ||
+    Number(value) < minimum ||
     Number(value) > maximum
   ) {
     throw new Error(

@@ -1,9 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../test/assert.ts";
 import type { ProtocolExecutor } from "./connector.ts";
 import { ExtensionProtocolExecutor } from "./extension-protocol-executor.ts";
 import { ProtocolDispatcher } from "./protocol-dispatcher.ts";
 
-Deno.test("ProtocolDispatcher adds extension routes without replacing legacy execution", async () => {
+test("ProtocolDispatcher adds extension routes without replacing legacy execution", async () => {
   const calls: string[] = [];
   const extensions = new ExtensionProtocolExecutor({
     execute: () => {

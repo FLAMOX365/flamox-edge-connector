@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../test/assert.ts";
 import type { EdgeConnectorRequestFrame } from "./generated/models.ts";
 import { createLogger } from "./logger.ts";
 import { HttpProxyExecutor } from "./proxy-router.ts";
@@ -11,7 +12,7 @@ const silentLogger = createLogger("error", {
   warn: () => undefined,
 });
 
-Deno.test("HttpProxyExecutor forwards the request to its absolute URL and maps the response", async () => {
+test("HttpProxyExecutor forwards the request to its absolute URL and maps the response", async () => {
   const originalFetch = globalThis.fetch;
   let captured: { url: string; init?: RequestInit } | undefined;
   Object.defineProperty(globalThis, "fetch", {
@@ -61,7 +62,7 @@ Deno.test("HttpProxyExecutor forwards the request to its absolute URL and maps t
   }
 });
 
-Deno.test("HttpProxyExecutor returns a null body for an empty upstream response", async () => {
+test("HttpProxyExecutor returns a null body for an empty upstream response", async () => {
   const originalFetch = globalThis.fetch;
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,
@@ -86,7 +87,7 @@ Deno.test("HttpProxyExecutor returns a null body for an empty upstream response"
   }
 });
 
-Deno.test("HttpProxyExecutor rejects a relative request URL with a clear error", async () => {
+test("HttpProxyExecutor rejects a relative request URL with a clear error", async () => {
   const router = new HttpProxyExecutor({ logger: silentLogger });
   await assertRejects(
     () =>

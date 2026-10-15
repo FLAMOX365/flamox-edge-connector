@@ -1,0 +1,55 @@
+{
+  "name": "@edge-connector/sdk",
+  "version": "2.0.0",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/mod.d.ts",
+      "import": "./dist/mod.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "import": "./dist/extension.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./areas/telephony": {
+      "types": "./dist/areas/telephony.d.ts",
+      "import": "./dist/areas/telephony.js"
+    },
+    "./areas/telephony-schemas": {
+      "types": "./dist/areas/telephony-schemas.d.ts",
+      "import": "./dist/areas/telephony-schemas.js"
+    },
+    "./tcp": {
+      "types": "./dist/tcp.d.ts",
+      "import": "./dist/tcp.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "socks": "^2.8.10"
+  }
+}

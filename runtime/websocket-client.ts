@@ -1,3 +1,10 @@
+import NodeWebSocket from "ws";
+
+export type WebSocketFactory = (
+  url: string,
+  options: { headers: Record<string, string> },
+) => NodeWebSocket;
+
 import {
   type AccessTokenOptions,
   generateAccessToken,
@@ -29,6 +36,8 @@ export async function runControlPlaneWebSocketClient(
   signal: AbortSignal,
   status: RuntimeStatus = createRuntimeStatus(),
   logger: RuntimeLogger = createLogger(config.logLevel),
+  createSocket: WebSocketFactory = (url, options) =>
+    new NodeWebSocket(url, options),
 ): Promise<void> {
   if (!config.websocketUrl) {
     return;
@@ -41,15 +50,14 @@ export async function runControlPlaneWebSocketClient(
     status.reconnectAttempt = attempt;
 
     try {
-      logger.info(
-        `Opening Edge Connector WebSocket (attempt ${attempt + 1})`,
-      );
+      logger.info(`Opening Edge Connector WebSocket (attempt ${attempt + 1})`);
       const outcome = await openWebSocket(
         config,
         runtime,
         signal,
         status,
         logger,
+        createSocket,
       );
       attempt = outcome.stableOpen ? 0 : attempt + 1;
     } catch (error) {
@@ -70,9 +78,7 @@ export async function runControlPlaneWebSocketClient(
         config.reconnectMaxDelayMs,
         config.reconnectJitterRatio,
       );
-      logger.info(
-        `Reconnecting Edge Connector WebSocket in ${backoff}ms`,
-      );
+      logger.info(`Reconnecting Edge Connector WebSocket in ${backoff}ms`);
       await delay(backoff, signal);
     } catch (error) {
       logger.error("Edge Connector reconnect delay failed", error);
@@ -113,6 +119,7 @@ async function openWebSocket(
   signal: AbortSignal,
   status: RuntimeStatus,
   logger: RuntimeLogger,
+  createSocket: WebSocketFactory,
 ): Promise<OpenOutcome> {
   const accessToken = await generateAccessToken(
     getAccessTokenOptions(config, signal),
@@ -123,13 +130,11 @@ async function openWebSocket(
     // Adding an abort listener now would never fire (the transition already
     // happened), so bail out immediately to avoid a hung promise.
     if (signal.aborted) {
-      reject(
-        new Error("Edge Connector shutting down before connect"),
-      );
+      reject(new Error("Edge Connector shutting down before connect"));
       return;
     }
 
-    const socket = new WebSocket(config.websocketUrl!, {
+    const socket = createSocket(config.websocketUrl!, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -218,7 +223,7 @@ async function openWebSocket(
           const now = Date.now();
           status.lastTickAt = now;
 
-          if (socket.readyState === WebSocket.OPEN) {
+          if (socket.readyState === NodeWebSocket.OPEN) {
             logger.info("Sending Edge Connector heartbeat");
             socket.send(serializeFrame(createHeartbeatFrame()));
           }
@@ -226,8 +231,8 @@ async function openWebSocket(
           if (config.heartbeatTimeoutFactor > 0) {
             const lastInbound = status.lastInboundAt ?? openedAt;
             const silentFor = now - lastInbound;
-            const limit = config.heartbeatIntervalMs *
-              config.heartbeatTimeoutFactor;
+            const limit =
+              config.heartbeatIntervalMs * config.heartbeatTimeoutFactor;
             if (silentFor > limit) {
               logger.warn(
                 `Edge Connector WebSocket silent for ${silentFor}ms; reconnecting`,
@@ -255,8 +260,8 @@ async function openWebSocket(
     });
 
     socket.addEventListener("close", () => {
-      const stableOpen = opened &&
-        (Date.now() - openedAt) >= config.reconnectStableThresholdMs;
+      const stableOpen =
+        opened && Date.now() - openedAt >= config.reconnectStableThresholdMs;
       settle({ stableOpen });
     });
   });
@@ -267,7 +272,8 @@ function getAccessTokenOptions(
   signal: AbortSignal,
 ): AccessTokenOptions {
   if (
-    (!config.tokenEndpoint && !config.controlPlaneUrl) || !config.clientId ||
+    (!config.tokenEndpoint && !config.controlPlaneUrl) ||
+    !config.clientId ||
     !config.clientSecret
   ) {
     throw new Error("Control-plane authentication is not configured.");

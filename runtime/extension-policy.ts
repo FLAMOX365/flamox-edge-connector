@@ -1,4 +1,5 @@
-import type { JsonValue } from "../sdk/extension.ts";
+import * as fs from "node:fs/promises";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { ExtensionManifest } from "./extension-manifest.ts";
 
 export type ExtensionGrant = {
@@ -70,11 +71,11 @@ export class StaticExtensionPolicy implements ExtensionPolicy {
   static async fromFile(path: string): Promise<StaticExtensionPolicy> {
     let parsed: unknown;
     try {
-      const info = await Deno.stat(path);
-      if (!info.isFile || info.size > 1024 * 1024) {
+      const info = await fs.stat(path);
+      if (!info.isFile() || info.size > 1024 * 1024) {
         throw new Error("Extension policy is missing or too large.");
       }
-      parsed = JSON.parse(await Deno.readTextFile(path));
+      parsed = JSON.parse(await fs.readFile(path, "utf8"));
     } catch (error) {
       throw new Error(`Unable to read extension policy from '${path}'.`, {
         cause: error,
@@ -118,9 +119,10 @@ export class StaticExtensionPolicy implements ExtensionPolicy {
       manifest.id,
     );
     const configuredSet = new Set(configuredNetwork);
-    const deniedNetwork = grant.network.filter((target) =>
-      !rule.network.includes(target) &&
-      !(rule.allowConfiguredNetwork && configuredSet.has(target))
+    const deniedNetwork = grant.network.filter(
+      (target) =>
+        !rule.network.includes(target) &&
+        !(rule.allowConfiguredNetwork && configuredSet.has(target)),
     );
     if (deniedNetwork.length > 0) {
       throw new Error(
@@ -137,7 +139,8 @@ export function parsePolicyRules(
   value: unknown,
 ): readonly ExtensionPolicyRule[] {
   if (
-    !isRecord(value) || value.schemaVersion !== 1 ||
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
     !Array.isArray(value.extensions)
   ) {
     throw new Error("Extension policy must use schemaVersion 1.");
@@ -166,12 +169,13 @@ export function parsePolicyRules(
         `rule ${index} capabilities`,
       ),
       network: stringArray(nested.network, `rule ${index} network`),
-      allowConfiguredNetwork: nested.allowConfiguredNetwork === undefined
-        ? false
-        : booleanValue(
-          nested.allowConfiguredNetwork,
-          `rule ${index} allowConfiguredNetwork`,
-        ),
+      allowConfiguredNetwork:
+        nested.allowConfiguredNetwork === undefined
+          ? false
+          : booleanValue(
+              nested.allowConfiguredNetwork,
+              `rule ${index} allowConfiguredNetwork`,
+            ),
       secrets: stringArray(nested.secrets, `rule ${index} secrets`),
     };
   });
@@ -226,7 +230,9 @@ export function resolveConfiguredNetworkTargets(
     }
     if (
       (url.protocol !== "http:" && url.protocol !== "https:") ||
-      url.username || url.password || !url.hostname
+      url.username ||
+      url.password ||
+      !url.hostname
     ) {
       throw new Error(
         `Configured network value '${permission.configurationPointer}' must use HTTP(S) without credentials.`,
@@ -235,8 +241,8 @@ export function resolveConfiguredNetworkTargets(
     const port = url.port
       ? Number.parseInt(url.port, 10)
       : url.protocol === "https:"
-      ? 443
-      : 80;
+        ? 443
+        : 80;
     if (!permission.allowedPorts.includes(port)) {
       throw new Error(
         `Configured network value '${permission.configurationPointer}' uses disallowed port ${port}.`,
@@ -253,17 +259,16 @@ export function resolveConfiguredNetworkTargets(
   return targets;
 }
 
-function jsonPointer(
-  value: JsonValue,
-  pointer: string,
-): JsonValue | undefined {
+function jsonPointer(value: JsonValue, pointer: string): JsonValue | undefined {
   let current: JsonValue | undefined = value;
   for (const rawSegment of pointer.split("/").slice(1)) {
     const segment = rawSegment.replaceAll("~1", "/").replaceAll("~0", "~");
     if (
-      current === null || Array.isArray(current) ||
+      current === null ||
+      Array.isArray(current) ||
       typeof current !== "object"
-    ) return undefined;
+    )
+      return undefined;
     current = current[segment];
   }
   return current;
@@ -286,7 +291,8 @@ function assertExactGrant(
   const missing = requested.filter((value) => !grantedSet.has(value));
   const unexpected = granted.filter((value) => !requestedSet.has(value));
   if (
-    missing.length > 0 || unexpected.length > 0 ||
+    missing.length > 0 ||
+    unexpected.length > 0 ||
     grantedSet.size !== granted.length
   ) {
     throw new Error(
@@ -305,16 +311,17 @@ function assertAllowed(
   const denied = granted.filter((value) => !allowedSet.has(value));
   if (denied.length > 0) {
     throw new Error(
-      `Local policy denies ${label}${denied.length === 1 ? "" : "s"} ${
-        denied.join(", ")
-      } for '${extensionId}'.`,
+      `Local policy denies ${label}${denied.length === 1 ? "" : "s"} ${denied.join(
+        ", ",
+      )} for '${extensionId}'.`,
     );
   }
 }
 
 function stringArray(value: unknown, label: string): readonly string[] {
   if (
-    !Array.isArray(value) || value.some((nested) => typeof nested !== "string")
+    !Array.isArray(value) ||
+    value.some((nested) => typeof nested !== "string")
   ) {
     throw new Error(`Extension policy ${label} must be a string array.`);
   }

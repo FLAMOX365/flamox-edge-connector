@@ -1,3 +1,5 @@
+import { isNotFound } from "./files.ts";
+import * as fs from "node:fs/promises";
 export type ConnectorIdentity = {
   readonly schemaVersion: 1;
   readonly connectorId: string;
@@ -24,15 +26,15 @@ export class ConnectorIdentityStore {
 
   async load(): Promise<ConnectorIdentity | undefined> {
     try {
-      const info = await Deno.stat(this.path);
-      if (!info.isFile || info.size > 1024 * 1024) {
+      const info = await fs.stat(this.path);
+      if (!info.isFile() || info.size > 1024 * 1024) {
         throw new Error("Connector identity is missing or too large.");
       }
       return parseConnectorIdentity(
-        JSON.parse(await Deno.readTextFile(this.path)),
+        JSON.parse(await fs.readFile(this.path, "utf8")),
       );
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
+      if (isNotFound(error)) return undefined;
       throw new Error("Unable to load the connector identity.", {
         cause: error,
       });
@@ -46,18 +48,17 @@ export class ConnectorIdentityStore {
       this.path.lastIndexOf("\\"),
     );
     const directory = slash < 0 ? "." : this.path.slice(0, slash);
-    await Deno.mkdir(directory, { recursive: true, mode: 0o700 });
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.tmp-${crypto.randomUUID()}`;
     try {
-      await Deno.writeTextFile(
-        temporary,
-        `${JSON.stringify(parsed, null, 2)}\n`,
-        { createNew: true, mode: 0o600 },
-      );
-      await Deno.rename(temporary, this.path);
-      await Deno.chmod(this.path, 0o600);
+      await fs.writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await fs.rename(temporary, this.path);
+      await fs.chmod(this.path, 0o600);
     } catch (error) {
-      await Deno.remove(temporary).catch(() => undefined);
+      await fs.rm(temporary).catch(() => undefined);
       throw error;
     }
   }
@@ -141,10 +142,12 @@ export function parseConnectorIdentity(value: unknown): ConnectorIdentity {
 function rsaJwk(value: unknown, privateKey: boolean): JsonWebKey {
   if (!isRecord(value)) invalid();
   if (
-    value.kty !== "RSA" || typeof value.n !== "string" ||
+    value.kty !== "RSA" ||
+    typeof value.n !== "string" ||
     typeof value.e !== "string" ||
     (privateKey && typeof value.d !== "string")
-  ) invalid();
+  )
+    invalid();
   return value as JsonWebKey;
 }
 
@@ -155,9 +158,8 @@ function identifier(value: unknown): string {
 }
 
 function text(value: unknown, maximum: number): string {
-  if (
-    typeof value !== "string" || value.length === 0 || value.length > maximum
-  ) invalid();
+  if (typeof value !== "string" || value.length === 0 || value.length > maximum)
+    invalid();
   return value;
 }
 
@@ -168,7 +170,8 @@ function exactKeys(
   if (
     Object.keys(value).length !== keys.length ||
     keys.some((key) => !Object.hasOwn(value, key))
-  ) invalid();
+  )
+    invalid();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

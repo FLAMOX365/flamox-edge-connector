@@ -4,7 +4,7 @@
  * GET /ad/groups/:id/members - List members of an AD group
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 interface AdMember {
   sAMAccountName: string;
@@ -45,7 +45,7 @@ export default defineHttp({
     const url = `${bridgeUrl}/api/v1/groups/${encodeURIComponent(id)}/members`;
 
     const headers: HeadersInit = {
-      "Accept": "application/json",
+      Accept: "application/json",
       "X-Request-Id": ctx.requestId,
     };
 
@@ -69,7 +69,7 @@ export default defineHttp({
         return ctx.res.error(response.status, `Bridge error: ${errorText}`);
       }
 
-      const data = await response.json() as { members: AdMember[] };
+      const data = (await response.json()) as { members: AdMember[] };
       const members = data.members.map(normalizeMember);
 
       return ctx.res.ok().json({

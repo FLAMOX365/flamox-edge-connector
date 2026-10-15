@@ -19,8 +19,12 @@ const logLevels: Record<LogLevel, number> = {
 export const defaultLogLevel: LogLevel = "info";
 
 export function isLogLevel(value: string): value is LogLevel {
-  return value === "error" || value === "warn" || value === "info" ||
-    value === "debug";
+  return (
+    value === "error" ||
+    value === "warn" ||
+    value === "info" ||
+    value === "debug"
+  );
 }
 
 export function createLogger(

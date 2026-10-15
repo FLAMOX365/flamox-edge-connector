@@ -20,7 +20,7 @@ a single file.
 
 ```
 ticketing-yaml/
-├── deno.json
+├── package.json
 ├── docker-compose.yml
 ├── .env.example
 └── functions/
@@ -114,3 +114,11 @@ curl http://localhost:8080/tickets
 ## Usage
 
 Copy the YAML files to your project and adjust the environment variables.
+
+## Node.js development
+
+From the connector root, run `yarn install --immutable`, `yarn build`, and
+`yarn check:templates`. The examples use the built SDK through Yarn workspaces.
+When copying an example outside this checkout, replace its SDK dependency with a
+`file:` reference to the SDK in a built, pinned connector checkout, then run
+`yarn install` in the copied project.

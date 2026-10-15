@@ -1,5 +1,8 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals } from "../test/assert.ts";
+import { join } from "node:path";
 import { loadConfig } from "./config.ts";
 import { createLogger } from "./logger.ts";
 import { createReloadableProtocolExecutor } from "./reloadable-request-executor.ts";
@@ -11,8 +14,8 @@ const silentLogger = createLogger("error", {
   warn: () => undefined,
 });
 
-Deno.test("ReloadableProtocolExecutor switches between HTTP proxy and function mode", async () => {
-  const dir = await Deno.makeTempDir();
+test("ReloadableProtocolExecutor switches between HTTP proxy and function mode", async () => {
+  const dir = await makeTempDirectory();
   try {
     const functionsDir = join(dir, "functions");
     const executor = await createReloadableProtocolExecutor({
@@ -23,27 +26,30 @@ Deno.test("ReloadableProtocolExecutor switches between HTTP proxy and function m
     assertEquals(executor.mode, "http-proxy");
     assertEquals(executor.routes.length, 0);
 
-    await Deno.mkdir(functionsDir, { recursive: true });
-    await Deno.writeTextFile(
+    await fs.mkdir(functionsDir, { recursive: true });
+    await fs.writeFile(
       join(functionsDir, "health.ts"),
       "export const GET = () => new Response('ok');\n",
     );
     await executor.reload("test create");
 
     assertEquals(executor.mode, "http-functions");
-    assertEquals(executor.routes.map((route) => route.path), ["/health"]);
+    assertEquals(
+      executor.routes.map((route) => route.path),
+      ["/health"],
+    );
 
-    await Deno.remove(functionsDir, { recursive: true });
+    await fs.rm(functionsDir, { recursive: true });
     await executor.reload("test remove");
 
     assertEquals(executor.mode, "http-proxy");
     assertEquals(executor.routes.length, 0);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    await fs.rm(dir, { recursive: true });
   }
 });
 
-Deno.test("Integration: Starter template loads valid functions and isolates corrupt ones", async () => {
+test("Integration: Starter template loads valid functions and isolates corrupt ones", async () => {
   const starterFunctionsDir = new URL(
     "../templates/starter/functions",
     import.meta.url,
@@ -91,9 +97,9 @@ Deno.test("Integration: Starter template loads valid functions and isolates corr
   assertEquals(
     corruptError !== undefined,
     true,
-    `Expected error log for corrupt.js. Error logs: ${
-      errorLogs.map((l) => l.message).join("\n")
-    }`,
+    `Expected error log for corrupt.js. Error logs: ${errorLogs
+      .map((l) => l.message)
+      .join("\n")}`,
   );
 
   // Error should mention DUPLICATE_HANDLER
@@ -105,9 +111,9 @@ Deno.test("Integration: Starter template loads valid functions and isolates corr
   assertEquals(
     hasDuplicateError,
     true,
-    `Expected DUPLICATE_HANDLER in error logs. Errors: ${
-      errorLogs.map((l) => l.message).join("\n")
-    }`,
+    `Expected DUPLICATE_HANDLER in error logs. Errors: ${errorLogs
+      .map((l) => l.message)
+      .join("\n")}`,
   );
 
   // Print full log output for visibility

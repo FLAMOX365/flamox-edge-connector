@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../test/assert.ts";
 import { createLogger, isLogLevel } from "./logger.ts";
 
-Deno.test("isLogLevel accepts supported log levels only", () => {
+test("isLogLevel accepts supported log levels only", () => {
   assertEquals(isLogLevel("error"), true);
   assertEquals(isLogLevel("warn"), true);
   assertEquals(isLogLevel("info"), true);
@@ -9,7 +10,7 @@ Deno.test("isLogLevel accepts supported log levels only", () => {
   assertEquals(isLogLevel("trace"), false);
 });
 
-Deno.test("createLogger filters messages by level", () => {
+test("createLogger filters messages by level", () => {
   const entries: string[] = [];
   const sink = {
     error: (...data: unknown[]) => entries.push(`error:${data.join(" ")}`),

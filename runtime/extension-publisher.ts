@@ -19,10 +19,10 @@ export async function generatePublisherKey(
 ): Promise<PublisherKeyPair> {
   publisher = requiredText(publisher, "publisher");
   keyId = requiredText(keyId, "key id");
-  const pair = await crypto.subtle.generateKey("Ed25519", true, [
+  const pair = (await crypto.subtle.generateKey("Ed25519", true, [
     "sign",
     "verify",
-  ]) as CryptoKeyPair;
+  ])) as CryptoKeyPair;
   const privateKey = await crypto.subtle.exportKey("jwk", pair.privateKey);
   const publicKey = await crypto.subtle.exportKey("jwk", pair.publicKey);
   return {
@@ -50,13 +50,9 @@ export async function signExtensionRelease(
     publisher: manifest.publisher,
     publisherKeyId,
   };
-  const imported = await crypto.subtle.importKey(
-    "jwk",
-    key,
-    "Ed25519",
-    false,
-    ["sign"],
-  );
+  const imported = await crypto.subtle.importKey("jwk", key, "Ed25519", false, [
+    "sign",
+  ]);
   const signature = await crypto.subtle.sign(
     "Ed25519",
     imported,
@@ -67,7 +63,9 @@ export async function signExtensionRelease(
 
 function parsePrivateKey(value: unknown): JsonWebKey {
   if (
-    typeof value !== "object" || value === null || Array.isArray(value) ||
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
     (value as JsonWebKey).kty !== "OKP" ||
     (value as JsonWebKey).crv !== "Ed25519" ||
     typeof (value as JsonWebKey).x !== "string" ||

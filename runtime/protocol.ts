@@ -56,7 +56,8 @@ export function parseMessageFrame(data: unknown): EdgeConnectorMessageFrame {
   }
 
   if (
-    parsed.type !== "request" && parsed.type !== "response" &&
+    parsed.type !== "request" &&
+    parsed.type !== "response" &&
     parsed.type !== "heartbeat"
   ) {
     throw new RuntimeError(
@@ -131,11 +132,11 @@ function validateRequestFrame(frame: Record<string, unknown>): void {
   if (!isRecord(frame.request)) {
     invalid("Request frame request must be an object");
   }
-  exactKeys(frame.request, ["method", "url"], [
-    "headers",
-    "body",
-    "timeoutSeconds",
-  ]);
+  exactKeys(
+    frame.request,
+    ["method", "url"],
+    ["headers", "body", "timeoutSeconds"],
+  );
   if (
     typeof frame.request.method !== "string" ||
     !methods.has(frame.request.method)
@@ -143,14 +144,16 @@ function validateRequestFrame(frame: Record<string, unknown>): void {
     invalid("Request method is unsupported");
   }
   if (
-    typeof frame.request.url !== "string" || frame.request.url.length === 0 ||
+    typeof frame.request.url !== "string" ||
+    frame.request.url.length === 0 ||
     frame.request.url.length > 4_096
   ) {
     invalid("Request URL must contain between 1 and 4096 characters");
   }
   optionalHeaders(frame.request.headers);
   if (
-    frame.request.body !== undefined && frame.request.body !== null &&
+    frame.request.body !== undefined &&
+    frame.request.body !== null &&
     typeof frame.request.body !== "string"
   ) {
     invalid("Request body must be a string or null");
@@ -179,7 +182,8 @@ function validateResponseFrame(frame: Record<string, unknown>): void {
     boundedInteger(frame.response.statusCode, 100, 599, "Response statusCode");
     optionalHeaders(frame.response.headers);
     if (
-      frame.response.body !== undefined && frame.response.body !== null &&
+      frame.response.body !== undefined &&
+      frame.response.body !== null &&
       typeof frame.response.body !== "string"
     ) {
       invalid("Response body must be a string or null");
@@ -251,7 +255,8 @@ function boundedInteger(
   label: string,
 ): void {
   if (
-    !Number.isInteger(value) || Number(value) < minimum ||
+    !Number.isInteger(value) ||
+    Number(value) < minimum ||
     Number(value) > maximum
   ) {
     invalid(`${label} must be an integer between ${minimum} and ${maximum}`);
@@ -265,7 +270,8 @@ function boundedText(
   label: string,
 ): string {
   if (
-    typeof value !== "string" || value.length < minimum ||
+    typeof value !== "string" ||
+    value.length < minimum ||
     value.length > maximum
   ) {
     invalid(

@@ -1,4 +1,3 @@
 {
-  "deno.enable": true,
   "snyk.advanced.autoSelectOrganization": true
 }

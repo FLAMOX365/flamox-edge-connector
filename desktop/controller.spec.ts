@@ -1,4 +1,7 @@
-import { assertEquals, assertMatch, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "../runtime/files.ts";
+import * as fs from "node:fs/promises";
+import { assertEquals, assertMatch, assertRejects } from "../test/assert.ts";
 import {
   ConnectorIdentityStore,
   generateConnectorKeyPair,
@@ -10,8 +13,8 @@ import {
   parseSettings,
 } from "./controller.ts";
 
-Deno.test("desktop controller persists validated settings without starting a second runtime", async () => {
-  const root = await Deno.makeTempDir();
+test("desktop controller persists validated settings without starting a second runtime", async () => {
+  const root = await makeTempDirectory();
   const settingsPath = `${root}/config/settings.json`;
   try {
     const controller = await DesktopConnectorController.create(settingsPath);
@@ -26,26 +29,29 @@ Deno.test("desktop controller persists validated settings without starting a sec
     assertEquals(state.running, false);
     assertEquals(state.settings.displayName, "Desktop Integration Test");
     assertEquals(
-      JSON.parse(await Deno.readTextFile(settingsPath)).bindPort,
+      JSON.parse(await fs.readFile(settingsPath, "utf8")).bindPort,
       18_080,
     );
-    if (Deno.build.os !== "windows") {
-      assertEquals((await Deno.stat(settingsPath)).mode! & 0o777, 0o600);
+    if (
+      (process.platform === "win32" ? "windows" : process.platform) !==
+      "windows"
+    ) {
+      assertEquals((await fs.stat(settingsPath)).mode! & 0o777, 0o600);
     }
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("desktop publisher workflow generates, signs and packs a customer extension", async () => {
-  const root = await Deno.makeTempDir();
+test("desktop publisher workflow generates, signs and packs a customer extension", async () => {
+  const root = await makeTempDirectory();
   try {
     const controller = await DesktopConnectorController.create(
       `${root}/settings.json`,
     );
     const source = `${root}/extension`;
-    await Deno.mkdir(source);
-    await Deno.writeTextFile(
+    await fs.mkdir(source);
+    await fs.writeFile(
       `${source}/extension-manifest.json`,
       JSON.stringify({
         schemaVersion: 2,
@@ -54,18 +60,20 @@ Deno.test("desktop publisher workflow generates, signs and packs a customer exte
         description: "Tests the visual publisher workflow.",
         publisher: "Customer GmbH",
         version: "1.0.0",
-        runtime: { kind: "deno-worker", entrypoint: "main.ts" },
+        runtime: { kind: "node-process", entrypoint: "main.ts" },
         capabilities: [],
         permissions: { network: [], configuredNetwork: [], secrets: [] },
-        actions: [{
-          name: "echo",
-          idempotent: true,
-          timeoutSeconds: 10,
-        }],
+        actions: [
+          {
+            name: "echo",
+            idempotent: true,
+            timeoutSeconds: 10,
+          },
+        ],
         translations: {},
       }),
     );
-    await Deno.writeTextFile(
+    await fs.writeFile(
       `${source}/main.ts`,
       "export default { actions: { echo: (_context: unknown, input: unknown) => input } };\n",
     );
@@ -89,26 +97,26 @@ Deno.test("desktop publisher workflow generates, signs and packs a customer exte
       "application/vnd.flamox.edge-extension+json",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("desktop settings reject insecure remote management by default", async () => {
+test("desktop settings reject insecure remote management by default", async () => {
   await assertRejects(
     () =>
       Promise.resolve().then(() =>
         parseSettings({
           ...defaultSettings(),
           managementUrl: "http://remote.example/api/v1/",
-        })
+        }),
       ),
     Error,
     "https:",
   );
 });
 
-Deno.test("desktop shows the persisted tenant pairing while the runtime is stopped", async () => {
-  const root = await Deno.makeTempDir();
+test("desktop shows the persisted tenant pairing while the runtime is stopped", async () => {
+  const root = await makeTempDirectory();
   const settingsPath = `${root}/settings.json`;
   try {
     const first = await DesktopConnectorController.create(settingsPath);
@@ -133,8 +141,9 @@ Deno.test("desktop shows the persisted tenant pairing while the runtime is stopp
     ).save({ schemaVersion: 1, desiredRevision: 7, commandSequence: 11 });
 
     // act
-    const state = (await DesktopConnectorController.create(settingsPath))
-      .state();
+    const state = (
+      await DesktopConnectorController.create(settingsPath)
+    ).state();
 
     // assert
     assertEquals(state.running, false);
@@ -146,6 +155,6 @@ Deno.test("desktop shows the persisted tenant pairing while the runtime is stopp
       false,
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });

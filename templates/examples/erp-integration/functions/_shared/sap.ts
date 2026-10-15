@@ -65,9 +65,10 @@ export function extractODataResults<T>(data: unknown): T[] | T | null {
 /**
  * Normalizes SAP error messages.
  */
-export function normalizeSapError(
-  data: unknown,
-): { code: string; message: string } {
+export function normalizeSapError(data: unknown): {
+  code: string;
+  message: string;
+} {
   const body = data as Record<string, unknown>;
 
   // SAP error format: { error: { message: { value: "..." }, code: "..." } }

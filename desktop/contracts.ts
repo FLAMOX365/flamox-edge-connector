@@ -1,6 +1,6 @@
-import type { JsonValue } from "../sdk/extension.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { PathPickerRequest } from "./path-picker.ts";
-export type { JsonValue } from "../sdk/extension.ts";
+export type { JsonValue } from "@edge-connector/sdk/extension";
 export type { PathPickerRequest } from "./path-picker.ts";
 
 export type DesktopSettings = {

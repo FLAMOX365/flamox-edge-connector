@@ -11,7 +11,7 @@
  *   GET /ad/users?department=IT&limit=50
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 /**
  * User type returned by the AD bridge.
@@ -89,7 +89,7 @@ export default defineHttp({
 
     // Send request to the bridge.
     const headers: HeadersInit = {
-      "Accept": "application/json",
+      Accept: "application/json",
       "X-Request-Id": ctx.requestId,
     };
 
@@ -109,7 +109,7 @@ export default defineHttp({
         return ctx.res.error(response.status, `Bridge error: ${errorText}`);
       }
 
-      const data = await response.json() as { users: AdUser[] };
+      const data = (await response.json()) as { users: AdUser[] };
 
       // Normalize users and remove sensitive fields.
       const users = data.users.map(normalizeUser);

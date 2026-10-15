@@ -1,13 +1,20 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "../test/assert.ts";
 import { generateApiModels } from "./generate-api.ts";
 
-Deno.test("generates deterministic models without an external generator", async () => {
-  const root = await Deno.makeTempDir();
+test("generates deterministic models without an external generator", async () => {
+  const root = await makeTempDirectory();
   const source = `${root}/openapi`;
   const output = `${root}/generated`;
   try {
-    await Deno.mkdir(source);
-    await Deno.writeTextFile(
+    await fs.mkdir(source);
+    await fs.writeFile(
       `${source}/api.yml`,
       `components:
   schemas:
@@ -50,7 +57,7 @@ Deno.test("generates deterministic models without an external generator", async 
     await generateApiModels(source, output);
 
     assertEquals(
-      await Deno.readTextFile(`${output}/models/event-kind.ts`),
+      await fs.readFile(`${output}/models/event-kind.ts`, "utf8"),
       `// Generated from OpenAPI schemas. Do not edit manually.
 
 export const EVENT_KIND_VALUES = [
@@ -62,46 +69,46 @@ export type EventKind = (typeof EVENT_KIND_VALUES)[number];
 `,
     );
     assertStringIncludes(
-      await Deno.readTextFile(`${output}/models/event.ts`),
+      await fs.readFile(`${output}/models/event.ts`, "utf8"),
       'import type { EventKind } from "./event-kind.ts";',
     );
     assertStringIncludes(
-      await Deno.readTextFile(`${output}/models/event.ts`),
+      await fs.readFile(`${output}/models/event.ts`, "utf8"),
       "payload?: (string) | null;",
     );
     assertStringIncludes(
-      await Deno.readTextFile(`${output}/models/frame.ts`),
+      await fs.readFile(`${output}/models/frame.ts`, "utf8"),
       "export type Frame<",
     );
     assertStringIncludes(
-      await Deno.readTextFile(`${output}/models/frame.ts`),
+      await fs.readFile(`${output}/models/frame.ts`, "utf8"),
       '"event": { kind: "event" } & EventFrame;',
     );
     assertStringIncludes(
-      await Deno.readTextFile(`${output}/models/event-frame.ts`),
+      await fs.readFile(`${output}/models/event-frame.ts`, "utf8"),
       'import type { _FrameBase } from "./frame.ts";',
     );
     assertStringIncludes(
-      await Deno.readTextFile(`${output}/models.ts`),
+      await fs.readFile(`${output}/models.ts`, "utf8"),
       'export { EVENT_KIND_VALUES } from "./models/event-kind.ts";',
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("rejects duplicate component schemas", async () => {
-  const root = await Deno.makeTempDir();
+test("rejects duplicate component schemas", async () => {
+  const root = await makeTempDirectory();
   const source = `${root}/openapi`;
   try {
-    await Deno.mkdir(source);
+    await fs.mkdir(source);
     const document = `components:
   schemas:
     Duplicate:
       type: string
 `;
-    await Deno.writeTextFile(`${source}/first.yml`, document);
-    await Deno.writeTextFile(`${source}/second.yml`, document);
+    await fs.writeFile(`${source}/first.yml`, document);
+    await fs.writeFile(`${source}/second.yml`, document);
 
     await assertRejects(
       () => generateApiModels(source, `${root}/generated`),
@@ -109,19 +116,19 @@ Deno.test("rejects duplicate component schemas", async () => {
       "Duplicate OpenAPI component schema 'Duplicate'",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });
 
-Deno.test("rejects unsafe component schema names before replacing output", async () => {
-  const root = await Deno.makeTempDir();
+test("rejects unsafe component schema names before replacing output", async () => {
+  const root = await makeTempDirectory();
   const source = `${root}/openapi`;
   const output = `${root}/generated`;
   try {
-    await Deno.mkdir(source);
-    await Deno.mkdir(output);
-    await Deno.writeTextFile(`${output}/sentinel.ts`, "preserved\n");
-    await Deno.writeTextFile(
+    await fs.mkdir(source);
+    await fs.mkdir(output);
+    await fs.writeFile(`${output}/sentinel.ts`, "preserved\n");
+    await fs.writeFile(
       `${source}/api.yml`,
       `components:
   schemas:
@@ -136,10 +143,10 @@ Deno.test("rejects unsafe component schema names before replacing output", async
       "is not a safe TypeScript identifier",
     );
     assertEquals(
-      await Deno.readTextFile(`${output}/sentinel.ts`),
+      await fs.readFile(`${output}/sentinel.ts`, "utf8"),
       "preserved\n",
     );
   } finally {
-    await Deno.remove(root, { recursive: true });
+    await fs.rm(root, { recursive: true });
   }
 });

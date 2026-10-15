@@ -4,7 +4,7 @@
  * GET /health - Checks whether the connector and bridge are reachable.
  */
 
-import { defineHttp } from "@flamox/edge-connector-sdk";
+import { defineHttp } from "@edge-connector/sdk";
 
 export default defineHttp({
   get: async (ctx) => {

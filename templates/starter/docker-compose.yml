@@ -26,11 +26,8 @@ services:
       test:
         [
           "CMD",
-          "deno",
-          "run",
-          "--allow-net",
-          "--allow-env",
-          "runtime/health-check.ts",
+          "node",
+          "dist/runtime/health-check.js",
         ]
       interval: 30s
       timeout: 5s

@@ -1,4 +1,6 @@
-import type { JsonValue } from "../sdk/extension.ts";
+import { isNotFound } from "./files.ts";
+import * as fs from "node:fs/promises";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import type { ExtensionReleaseDescriptor } from "./extension-integrity.ts";
 import type { ExtensionGrant } from "./extension-policy.ts";
 
@@ -39,13 +41,13 @@ export class ExtensionStateStore {
   async load(): Promise<readonly InstalledExtensionState[]> {
     let text: string;
     try {
-      const info = await Deno.stat(this.#path);
-      if (!info.isFile || info.size > 5 * 1024 * 1024) {
+      const info = await fs.stat(this.#path);
+      if (!info.isFile() || info.size > 5 * 1024 * 1024) {
         throw new Error("Extension state file is missing or too large.");
       }
-      text = await Deno.readTextFile(this.#path);
+      text = await fs.readFile(this.#path, "utf8");
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) {
+      if (isNotFound(error)) {
         return [];
       }
       throw error;
@@ -59,7 +61,7 @@ export class ExtensionStateStore {
       throw new Error("Extension state file is invalid.");
     }
     const states = parsed.extensions.map((state) =>
-      parseInstalledExtensionState(state, parsed.schemaVersion === 2)
+      parseInstalledExtensionState(state, parsed.schemaVersion === 2),
     );
     const identifiers = states.map((state) => state.extensionId);
     if (new Set(identifiers).size !== identifiers.length) {
@@ -73,31 +75,31 @@ export class ExtensionStateStore {
   async save(extensions: readonly InstalledExtensionState[]): Promise<void> {
     const document: ExtensionStateDocument = {
       schemaVersion: 2,
-      extensions: [...extensions].sort((left, right) =>
-        left.extensionId.localeCompare(right.extensionId)
-      ).map((state) => ({ ...state, history: state.history ?? [] })),
+      extensions: [...extensions]
+        .sort((left, right) =>
+          left.extensionId.localeCompare(right.extensionId),
+        )
+        .map((state) => ({ ...state, history: state.history ?? [] })),
     };
     const slash = Math.max(
       this.#path.lastIndexOf("/"),
       this.#path.lastIndexOf("\\"),
     );
     const directory = slash < 0 ? "." : this.#path.slice(0, slash);
-    await Deno.mkdir(directory, { recursive: true });
+    await fs.mkdir(directory, { recursive: true });
     const temporary = `${this.#path}.tmp-${crypto.randomUUID()}`;
     try {
-      await Deno.writeTextFile(
-        temporary,
-        `${JSON.stringify(document, null, 2)}\n`,
-        {
-          createNew: true,
-          mode: 0o600,
-        },
-      );
-      await Deno.rename(temporary, this.#path);
+      await fs.writeFile(temporary, `${JSON.stringify(document, null, 2)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await fs.rename(temporary, this.#path);
     } catch (error) {
       try {
-        await Deno.remove(temporary);
-      } catch { /* preserve the original persistence failure */ }
+        await fs.rm(temporary);
+      } catch {
+        /* preserve the original persistence failure */
+      }
       throw error;
     }
   }
@@ -134,14 +136,14 @@ function parseInstalledExtensionState(
   const revision = parseInstalledExtensionRevision(value);
   const extensionId = revision.extensionId;
   if (
-    value.status !== "ACTIVE" && value.status !== "DISABLED" &&
+    value.status !== "ACTIVE" &&
+    value.status !== "DISABLED" &&
     value.status !== "ERROR"
   ) {
     invalidState();
   }
-  const lastErrorCode = value.lastErrorCode === null
-    ? null
-    : requiredText(value.lastErrorCode);
+  const lastErrorCode =
+    value.lastErrorCode === null ? null : requiredText(value.lastErrorCode);
   const historyValue = value.history ?? [];
   if (!Array.isArray(historyValue) || historyValue.length > 10) invalidState();
   const history = historyValue.map((nested) => {
@@ -172,9 +174,8 @@ function parseInstalledExtensionState(
 function parseInstalledExtensionRevision(
   value: Record<string, unknown>,
 ): InstalledExtensionRevision {
-  const managementMode = value.managementMode === undefined
-    ? "LOCAL"
-    : value.managementMode;
+  const managementMode =
+    value.managementMode === undefined ? "LOCAL" : value.managementMode;
   if (managementMode !== "MANAGED" && managementMode !== "LOCAL") {
     invalidState();
   }
@@ -182,11 +183,13 @@ function parseInstalledExtensionRevision(
   const version = requiredText(value.version);
   const packagePath = requiredText(value.packagePath);
   if (
-    packagePath.startsWith("/") || packagePath.startsWith("\\") ||
-    packagePath.split(/[\\/]/u).some((segment) =>
-      segment === ".." || segment === ""
-    )
-  ) invalidState();
+    packagePath.startsWith("/") ||
+    packagePath.startsWith("\\") ||
+    packagePath
+      .split(/[\\/]/u)
+      .some((segment) => segment === ".." || segment === "")
+  )
+    invalidState();
   if (!isRecord(value.release)) invalidState();
   exactKeys(value.release, [
     "extensionId",
@@ -205,9 +208,11 @@ function parseInstalledExtensionRevision(
     signature: requiredText(value.release.signature),
   };
   if (
-    release.extensionId !== extensionId || release.version !== version ||
+    release.extensionId !== extensionId ||
+    release.version !== version ||
     !/^sha256:[0-9a-f]{64}$/u.test(release.digest)
-  ) invalidState();
+  )
+    invalidState();
   if (!isRecord(value.grant)) invalidState();
   exactKeys(value.grant, ["capabilities", "network", "secrets"]);
   const grant: ExtensionGrant = {
@@ -227,9 +232,8 @@ function parseInstalledExtensionRevision(
     grant,
     configuration: value.configuration,
     installedAt: dateTime(value.installedAt),
-    activatedAt: value.activatedAt === null
-      ? null
-      : dateTime(value.activatedAt),
+    activatedAt:
+      value.activatedAt === null ? null : dateTime(value.activatedAt),
   };
 }
 
@@ -249,7 +253,9 @@ function exactKeys(
 
 function requiredText(value: unknown): string {
   if (
-    typeof value !== "string" || value.length === 0 || value.length > 10_000
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 10_000
   ) {
     invalidState();
   }
@@ -258,7 +264,8 @@ function requiredText(value: unknown): string {
 
 function stringArray(value: unknown): readonly string[] {
   if (
-    !Array.isArray(value) || value.some((nested) => typeof nested !== "string")
+    !Array.isArray(value) ||
+    value.some((nested) => typeof nested !== "string")
   ) {
     invalidState();
   }
@@ -280,9 +287,8 @@ function isJsonRecord(
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null || typeof value === "string" || typeof value === "boolean"
-  ) return true;
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
   return isRecord(value) && isJsonRecord(value);

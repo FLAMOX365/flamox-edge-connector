@@ -83,10 +83,8 @@ export type HttpRouteDefinition = {
 
 type LowerHttpMethod = Lowercase<HttpMethod>;
 
-export type DefineHttpConfig =
-  & Partial<Record<LowerHttpMethod, HttpHandler>>
-  & Partial<Record<HttpMethod, HttpHandler>>
-  & {
+export type DefineHttpConfig = Partial<Record<LowerHttpMethod, HttpHandler>> &
+  Partial<Record<HttpMethod, HttpHandler>> & {
     /**
      * Handler registered for every supported HTTP method unless a
      * method-specific handler overwrites it.
@@ -145,8 +143,7 @@ export function defineHttp(config: DefineHttpConfig): HttpRouteDefinition {
  * accidental double-registration at compile time.
  */
 export type HttpBuilderChain<Used extends HttpMethod = never> =
-  & HttpRouteDefinition
-  & {
+  HttpRouteDefinition & {
     /**
      * Adds middleware to the route pipeline.
      */
@@ -160,35 +157,48 @@ export type HttpBuilderChain<Used extends HttpMethod = never> =
      * After calling `all()`, no individual method handlers can be registered.
      */
     all(handler: HttpHandler): HttpBuilderChain<HttpMethod>;
-  }
-  & ("GET" extends Used ? unknown : {
-    /** Registers a handler for GET requests. */
-    get(handler: HttpHandler): HttpBuilderChain<Used | "GET">;
-  })
-  & ("POST" extends Used ? unknown : {
-    /** Registers a handler for POST requests. */
-    post(handler: HttpHandler): HttpBuilderChain<Used | "POST">;
-  })
-  & ("PUT" extends Used ? unknown : {
-    /** Registers a handler for PUT requests. */
-    put(handler: HttpHandler): HttpBuilderChain<Used | "PUT">;
-  })
-  & ("PATCH" extends Used ? unknown : {
-    /** Registers a handler for PATCH requests. */
-    patch(handler: HttpHandler): HttpBuilderChain<Used | "PATCH">;
-  })
-  & ("DELETE" extends Used ? unknown : {
-    /** Registers a handler for DELETE requests. */
-    delete(handler: HttpHandler): HttpBuilderChain<Used | "DELETE">;
-  })
-  & ("HEAD" extends Used ? unknown : {
-    /** Registers a handler for HEAD requests. */
-    head(handler: HttpHandler): HttpBuilderChain<Used | "HEAD">;
-  })
-  & ("OPTIONS" extends Used ? unknown : {
-    /** Registers a handler for OPTIONS requests. */
-    options(handler: HttpHandler): HttpBuilderChain<Used | "OPTIONS">;
-  });
+  } & ("GET" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for GET requests. */
+          get(handler: HttpHandler): HttpBuilderChain<Used | "GET">;
+        }) &
+    ("POST" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for POST requests. */
+          post(handler: HttpHandler): HttpBuilderChain<Used | "POST">;
+        }) &
+    ("PUT" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for PUT requests. */
+          put(handler: HttpHandler): HttpBuilderChain<Used | "PUT">;
+        }) &
+    ("PATCH" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for PATCH requests. */
+          patch(handler: HttpHandler): HttpBuilderChain<Used | "PATCH">;
+        }) &
+    ("DELETE" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for DELETE requests. */
+          delete(handler: HttpHandler): HttpBuilderChain<Used | "DELETE">;
+        }) &
+    ("HEAD" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for HEAD requests. */
+          head(handler: HttpHandler): HttpBuilderChain<Used | "HEAD">;
+        }) &
+    ("OPTIONS" extends Used
+      ? unknown
+      : {
+          /** Registers a handler for OPTIONS requests. */
+          options(handler: HttpHandler): HttpBuilderChain<Used | "OPTIONS">;
+        });
 
 /**
  * Starts a fluent HTTP route definition.
@@ -211,8 +221,9 @@ export function http(): HttpBuilderChain {
 export function isHttpRouteDefinition(
   value: unknown,
 ): value is HttpRouteDefinition {
-  return isRecord(value) && value.protocol === "http" &&
-    isRecord(value.handlers);
+  return (
+    isRecord(value) && value.protocol === "http" && isRecord(value.handlers)
+  );
 }
 
 /**
@@ -518,9 +529,11 @@ export function createHttpContext(
   context.log = log;
   context.upstream = (baseUrl) =>
     new HttpUpstreamBuilder(baseUrl).header("x-request-id", options.requestId);
-  context.waitUntil = options.waitUntil ?? ((task) => {
-    void task.catch((error) => log.error("Background task failed", error));
-  });
+  context.waitUntil =
+    options.waitUntil ??
+    ((task) => {
+      void task.catch((error) => log.error("Background task failed", error));
+    });
   context.proxy = new HttpProxyBuilder(context);
 
   return context;
@@ -560,17 +573,14 @@ export class HttpRequestFacade {
    * @param raw - Original Fetch API request.
    * @param params - Route parameters extracted from the function path.
    */
-  constructor(
-    raw: Request,
-    params: Record<string, string>,
-  ) {
+  constructor(raw: Request, params: Record<string, string>) {
     this.raw = raw;
     this.urlValue = new URL(raw.url);
     this.params = new HttpParamsFacade(params);
     this.query = new HttpQueryFacade(this.urlValue.searchParams);
     this.body = new HttpRequestBodyFacade(raw);
     this.cookieJar = new Lazy(() =>
-      parseCookieHeader(raw.headers.get("cookie"))
+      parseCookieHeader(raw.headers.get("cookie")),
     );
   }
 
@@ -844,7 +854,7 @@ export class HttpRequestBodyFacade {
    */
   text(): Promise<string> {
     this.textPromise ??= this.arrayBuffer().then((buffer) =>
-      new TextDecoder().decode(buffer)
+      new TextDecoder().decode(buffer),
     );
     return this.textPromise;
   }
@@ -908,8 +918,12 @@ export class HttpRequestBodyFacade {
   async auto<T = unknown>(): Promise<
     T | string | URLSearchParams | ArrayBuffer
   > {
-    const contentType = this.request.headers.get("content-type")?.split(";")[0]
-      .trim().toLowerCase() ?? "text/plain";
+    const contentType =
+      this.request.headers
+        .get("content-type")
+        ?.split(";")[0]
+        ?.trim()
+        .toLowerCase() ?? "text/plain";
 
     if (contentType === "application/json") return await this.json<T>();
     if (contentType === "application/x-www-form-urlencoded") {
@@ -1004,7 +1018,9 @@ export class HttpResponseFactory {
    * content type is provided.
    */
   json<T>(data: T, init?: ResponseInit): Response {
-    return this.status(init?.status ?? 200).headers(init?.headers).json(data);
+    return this.status(init?.status ?? 200)
+      .headers(init?.headers)
+      .json(data);
   }
 
   /**
@@ -1016,7 +1032,9 @@ export class HttpResponseFactory {
    * content type is provided.
    */
   text(data: string, init?: ResponseInit): Response {
-    return this.status(init?.status ?? 200).headers(init?.headers).text(data);
+    return this.status(init?.status ?? 200)
+      .headers(init?.headers)
+      .text(data);
   }
 
   /**
@@ -1028,7 +1046,9 @@ export class HttpResponseFactory {
    * type is provided.
    */
   html(data: string, init?: ResponseInit): Response {
-    return this.status(init?.status ?? 200).headers(init?.headers).html(data);
+    return this.status(init?.status ?? 200)
+      .headers(init?.headers)
+      .html(data);
   }
 
   /**
@@ -1222,7 +1242,7 @@ export class HttpResponseBuilder {
   headers(headers: HeadersInit | undefined): this {
     if (!headers) return this;
     new Headers(headers).forEach((value, name) =>
-      this.headerValues.set(name, value)
+      this.headerValues.set(name, value),
     );
     return this;
   }
@@ -1378,7 +1398,9 @@ export class HttpResponseBuilder {
 
   private finalize(body: BodyInit | null): Response {
     const headers = new Headers(this.headerValues);
-    const mustBeEmpty = this.statusCode === 204 || this.statusCode === 304 ||
+    const mustBeEmpty =
+      this.statusCode === 204 ||
+      this.statusCode === 304 ||
       this.requestMethod === "HEAD";
 
     if (mustBeEmpty) {
@@ -1457,10 +1479,12 @@ export class HttpResponseFromBuilder {
    * @returns A new Fetch API response with the configured status and headers.
    */
   async send(): Promise<Response> {
-    const body = this.requestMethod === "HEAD" || this.statusCode === 204 ||
-        this.statusCode === 304
-      ? null
-      : await this.response.text();
+    const body =
+      this.requestMethod === "HEAD" ||
+      this.statusCode === 204 ||
+      this.statusCode === 304
+        ? null
+        : await this.response.text();
     return new Response(body, {
       status: this.statusCode,
       headers: this.headers,
@@ -1475,7 +1499,7 @@ export class HttpResponseFromBuilder {
    * @returns A new JSON response with the configured status and headers.
    */
   async json<T = unknown>(): Promise<Response> {
-    const data = await this.response.json() as T;
+    const data = (await this.response.json()) as T;
     return new HttpResponseBuilder(this.statusCode, this.requestMethod)
       .headers(this.headers)
       .json(data);
@@ -1546,9 +1570,10 @@ export class HttpUpstreamBuilder {
    * @returns This builder for chaining.
    */
   queryFrom(values: URLSearchParams | HttpQueryFacade): this {
-    const entries = values instanceof HttpQueryFacade
-      ? values.toURLSearchParams().entries()
-      : values.entries();
+    const entries =
+      values instanceof HttpQueryFacade
+        ? values.toURLSearchParams().entries()
+        : values.entries();
     for (const [name, value] of entries) this.query.append(name, value);
     return this;
   }
@@ -1573,7 +1598,7 @@ export class HttpUpstreamBuilder {
    */
   headersFrom(headers: HeadersInit): this {
     new Headers(headers).forEach((value, name) =>
-      this.headers.set(name, value)
+      this.headers.set(name, value),
     );
     return this;
   }
@@ -1864,9 +1889,10 @@ export class HttpProxyBuilder {
     const response = await fetch(targetUrl, {
       method: this.ctx.req.method,
       headers,
-      body: this.ctx.req.method === "GET" || this.ctx.req.method === "HEAD"
-        ? undefined
-        : await this.ctx.req.body.text(),
+      body:
+        this.ctx.req.method === "GET" || this.ctx.req.method === "HEAD"
+          ? undefined
+          : await this.ctx.req.body.text(),
       signal: this.timeoutMs ? AbortSignal.timeout(this.timeoutMs) : undefined,
     });
 
@@ -2100,8 +2126,13 @@ function interpolatePath(
 }
 
 function isRedirectStatus(statusCode: number): statusCode is RedirectStatus {
-  return statusCode === 301 || statusCode === 302 || statusCode === 303 ||
-    statusCode === 307 || statusCode === 308;
+  return (
+    statusCode === 301 ||
+    statusCode === 302 ||
+    statusCode === 303 ||
+    statusCode === 307 ||
+    statusCode === 308
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

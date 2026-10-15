@@ -1,9 +1,6 @@
 # Dependencies
 node_modules/
 
-# Deno
-.deno/
-
 # Environment files
 .env
 .env.*
@@ -46,7 +43,14 @@ coverage/
 data/
 templates/starter/config/
 
-# Lock files from other package managers (we use deno.lock)
+# Lock files from other package managers
 package-lock.json
-yarn.lock
 pnpm-lock.yaml
+
+# Local package-manager state and native build output
+.yarn/install-state.gz
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
+desktop/resources/
+
+desktop/ui/bridge.js

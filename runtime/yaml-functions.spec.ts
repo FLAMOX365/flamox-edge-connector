@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../test/assert.ts";
 import { RuntimeError } from "./runtime-error.ts";
 import {
   applyYamlRequestTransform,
@@ -24,21 +25,21 @@ const baseContext: YamlTransformContext = {
   },
 };
 
-Deno.test("interpolate replaces env variables", () => {
+test("interpolate replaces env variables", () => {
   assertEquals(
     interpolate("Bearer {{ env.API_TOKEN }}", baseContext),
     "Bearer secret-token",
   );
 });
 
-Deno.test("interpolate replaces context variables", () => {
+test("interpolate replaces context variables", () => {
   assertEquals(
     interpolate("Request: {{ context.requestId }}", baseContext),
     "Request: test-request-id",
   );
 });
 
-Deno.test("interpolate replaces request variables", () => {
+test("interpolate replaces request variables", () => {
   assertEquals(
     interpolate(
       "URL: {{ request.url }}, Method: {{ request.method }}",
@@ -48,14 +49,11 @@ Deno.test("interpolate replaces request variables", () => {
   );
 });
 
-Deno.test("interpolate handles missing variables gracefully", () => {
-  assertEquals(
-    interpolate("Value: {{ env.MISSING }}", baseContext),
-    "Value: ",
-  );
+test("interpolate handles missing variables gracefully", () => {
+  assertEquals(interpolate("Value: {{ env.MISSING }}", baseContext), "Value: ");
 });
 
-Deno.test("YAML request transform adds headers", () => {
+test("YAML request transform adds headers", () => {
   const config: YamlRequestTransformConfig = {
     headers: {
       add: {
@@ -72,7 +70,7 @@ Deno.test("YAML request transform adds headers", () => {
   assertEquals(result.headers?.["x-request-id"], ["test-request-id"]);
 });
 
-Deno.test("YAML request transform removes headers", () => {
+test("YAML request transform removes headers", () => {
   const config: YamlRequestTransformConfig = {
     headers: {
       remove: ["authorization", "x-internal"],
@@ -82,7 +80,7 @@ Deno.test("YAML request transform removes headers", () => {
     method: "GET" as const,
     url: "/test",
     headers: {
-      "Authorization": ["Bearer token"],
+      Authorization: ["Bearer token"],
       "X-Internal": ["secret"],
       "Content-Type": ["application/json"],
     },
@@ -95,18 +93,18 @@ Deno.test("YAML request transform removes headers", () => {
   assertEquals(result.headers?.["Content-Type"], ["application/json"]);
 });
 
-Deno.test("YAML request transform sets headers", () => {
+test("YAML request transform sets headers", () => {
   const config: YamlRequestTransformConfig = {
     headers: {
       set: {
-        "authorization": "Bearer {{ env.API_TOKEN }}",
+        authorization: "Bearer {{ env.API_TOKEN }}",
       },
     },
   };
   const request = {
     method: "GET" as const,
     url: "/test",
-    headers: { "authorization": ["old-token"] },
+    headers: { authorization: ["old-token"] },
   };
 
   const result = applyYamlRequestTransform(config, request, baseContext);
@@ -114,7 +112,7 @@ Deno.test("YAML request transform sets headers", () => {
   assertEquals(result.headers?.["authorization"], ["Bearer secret-token"]);
 });
 
-Deno.test("YAML request transform applies URL prefix", () => {
+test("YAML request transform applies URL prefix", () => {
   const config: YamlRequestTransformConfig = {
     url: {
       prefix: "/api/v2",
@@ -127,7 +125,7 @@ Deno.test("YAML request transform applies URL prefix", () => {
   assertEquals(result.url, "/api/v2/users");
 });
 
-Deno.test("YAML request transform applies URL rewrite", () => {
+test("YAML request transform applies URL rewrite", () => {
   const config: YamlRequestTransformConfig = {
     url: {
       rewrite: "/internal{{ request.url }}",
@@ -140,7 +138,7 @@ Deno.test("YAML request transform applies URL rewrite", () => {
   assertEquals(result.url, "/internal/users");
 });
 
-Deno.test("YAML request transform removes URL prefix", () => {
+test("YAML request transform removes URL prefix", () => {
   const config: YamlRequestTransformConfig = {
     url: {
       removePrefix: "/api",
@@ -153,7 +151,7 @@ Deno.test("YAML request transform removes URL prefix", () => {
   assertEquals(result.url, "/users");
 });
 
-Deno.test("YAML request transform rejects with contains condition", () => {
+test("YAML request transform rejects with contains condition", () => {
   const config: YamlRequestTransformConfig = {
     reject: {
       if: 'request.url contains "/admin"',
@@ -170,7 +168,7 @@ Deno.test("YAML request transform rejects with contains condition", () => {
   );
 });
 
-Deno.test("YAML request transform rejects with equals condition", () => {
+test("YAML request transform rejects with equals condition", () => {
   const config: YamlRequestTransformConfig = {
     reject: {
       if: 'env.BLOCK_ALL == "true"',
@@ -191,7 +189,7 @@ Deno.test("YAML request transform rejects with equals condition", () => {
   );
 });
 
-Deno.test("YAML request transform passes when condition not met", () => {
+test("YAML request transform passes when condition not met", () => {
   const config: YamlRequestTransformConfig = {
     reject: {
       if: 'request.url contains "/admin"',
@@ -206,7 +204,7 @@ Deno.test("YAML request transform passes when condition not met", () => {
   assertEquals(result.url, "/users");
 });
 
-Deno.test("YAML response transform modifies status code", () => {
+test("YAML response transform modifies status code", () => {
   const config: YamlResponseTransformConfig = {
     statusCode: {
       set: 201,
@@ -219,7 +217,7 @@ Deno.test("YAML response transform modifies status code", () => {
   assertEquals(result.statusCode, 201);
 });
 
-Deno.test("YAML response transform adds headers", () => {
+test("YAML response transform adds headers", () => {
   const config: YamlResponseTransformConfig = {
     headers: {
       add: {
@@ -234,7 +232,7 @@ Deno.test("YAML response transform adds headers", () => {
   assertEquals(result.headers?.["x-processed-by"], ["flamox-edge-connector"]);
 });
 
-Deno.test("YAML response transform sets body", () => {
+test("YAML response transform sets body", () => {
   const config: YamlResponseTransformConfig = {
     body: {
       set: '{"wrapped": true, "requestId": "{{ context.requestId }}"}',

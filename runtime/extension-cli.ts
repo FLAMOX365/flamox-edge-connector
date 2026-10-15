@@ -1,3 +1,5 @@
+import { makeTempDirectory } from "./files.ts";
+import * as fs from "node:fs/promises";
 import { loadConfig } from "./config.ts";
 import {
   createExtensionBundle,
@@ -18,24 +20,27 @@ import {
 import { createExtensionManager } from "./main.ts";
 
 const usage = `Usage:
-  deno task extensions list
-  deno task extensions digest <package-dir>
-  deno task extensions keygen <publisher> <key-id> <private-key.jwk> <trust.json>
-  deno task extensions sign <package-dir> <private-key.jwk> <key-id> <release.json>
-  deno task extensions pack <package-dir> <release.json> <output.fmx>
-  deno task extensions install <package-dir> <release.json> <grant.json> [configuration.json] [--disabled]
-  deno task extensions install-bundle <bundle.fmx> <grant.json> [configuration.json] [--disabled]
-  deno task extensions reconfigure <extension-id> <configuration.json> [grant.json]
-  deno task extensions activate <extension-id>
-  deno task extensions disable <extension-id>
-  deno task extensions rollback <extension-id> [version]
-  deno task extensions uninstall <extension-id>`;
+  yarn extensions list
+  yarn extensions digest <package-dir>
+  yarn extensions keygen <publisher> <key-id> <private-key.jwk> <trust.json>
+  yarn extensions sign <package-dir> <private-key.jwk> <key-id> <release.json>
+  yarn extensions pack <package-dir> <release.json> <output.fmx>
+  yarn extensions install <package-dir> <release.json> <grant.json> [configuration.json] [--disabled]
+  yarn extensions install-bundle <bundle.fmx> <grant.json> [configuration.json] [--disabled]
+  yarn extensions reconfigure <extension-id> <configuration.json> [grant.json]
+  yarn extensions activate <extension-id>
+  yarn extensions disable <extension-id>
+  yarn extensions rollback <extension-id> [version]
+  yarn extensions uninstall <extension-id>`;
 
 export async function runExtensionCli(args: readonly string[]): Promise<void> {
   const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
   const [command, ...parameters] = normalizedArgs;
   if (
-    !command || command === "help" || command === "--help" || command === "-h"
+    !command ||
+    command === "help" ||
+    command === "--help" ||
+    command === "-h"
   ) {
     console.log(usage);
     return;
@@ -65,7 +70,7 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
     try {
       await writeJson(parameters[3]!, pair.trust);
     } catch (error) {
-      await Deno.remove(parameters[2]!).catch(() => undefined);
+      await fs.rm(parameters[2]!).catch(() => undefined);
       throw error;
     }
     console.log(
@@ -93,18 +98,20 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
     switch (command) {
       case "list": {
         requireCount(parameters, 0);
-        console.log(JSON.stringify(
-          manager.list().map((state) => ({
-            id: state.extensionId,
-            version: state.version,
-            status: state.status,
-            installedAt: state.installedAt,
-            activatedAt: state.activatedAt,
-            lastErrorCode: state.lastErrorCode,
-          })),
-          null,
-          2,
-        ));
+        console.log(
+          JSON.stringify(
+            manager.list().map((state) => ({
+              id: state.extensionId,
+              version: state.version,
+              status: state.status,
+              installedAt: state.installedAt,
+              activatedAt: state.activatedAt,
+              lastErrorCode: state.lastErrorCode,
+            })),
+            null,
+            2,
+          ),
+        );
         return;
       }
       case "install": {
@@ -117,9 +124,7 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
         const configurationFile = values[3];
         const state = await manager.install({
           sourceDirectory,
-          release: parseExtensionReleaseDescriptor(
-            await readJson(releaseFile),
-          ),
+          release: parseExtensionReleaseDescriptor(await readJson(releaseFile)),
           grant: parseExtensionGrant(await readJson(grantFile)),
           configuration: parseExtensionConfiguration(
             configurationFile ? await readJson(configurationFile) : {},
@@ -136,10 +141,10 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
         const values = disabled ? parameters.slice(0, -1) : parameters;
         if (values.length < 2 || values.length > 3) invalidUsage();
         const bundle = await readExtensionBundle(values[0]!);
-        const sourceDirectory = await Deno.makeTempDir({
-          prefix: "edge-extension-bundle-",
-        });
-        await Deno.remove(sourceDirectory);
+        const sourceDirectory = await makeTempDirectory(
+          "edge-extension-bundle-",
+        );
+        await fs.rmdir(sourceDirectory);
         try {
           await extractExtensionBundle(bundle, sourceDirectory);
           const state = await manager.install({
@@ -155,9 +160,9 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
             `Extension '${state.extensionId}' ${state.status.toLowerCase()} at ${state.version}.`,
           );
         } finally {
-          await Deno.remove(sourceDirectory, { recursive: true }).catch(() =>
-            undefined
-          );
+          await fs
+            .rm(sourceDirectory, { recursive: true })
+            .catch(() => undefined);
         }
         return;
       }
@@ -178,9 +183,10 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
       case "disable": {
         requireCount(parameters, 1);
         const extensionId = parameters[0]!;
-        const state = command === "activate"
-          ? await manager.activate(extensionId)
-          : await manager.disable(extensionId);
+        const state =
+          command === "activate"
+            ? await manager.activate(extensionId)
+            : await manager.disable(extensionId);
         console.log(
           `Extension '${state.extensionId}' is ${state.status.toLowerCase()}.`,
         );
@@ -209,19 +215,19 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
 
 async function readJson(path: string): Promise<unknown> {
   try {
-    const info = await Deno.stat(path);
-    if (!info.isFile || info.size > 2 * 1024 * 1024) {
+    const info = await fs.stat(path);
+    if (!info.isFile() || info.size > 2 * 1024 * 1024) {
       throw new Error("JSON input is missing or exceeds 2097152 bytes.");
     }
-    return JSON.parse(await Deno.readTextFile(path));
+    return JSON.parse(await fs.readFile(path, "utf8"));
   } catch (error) {
     throw new Error(`Unable to read JSON file '${path}'.`, { cause: error });
   }
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
-  await Deno.writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`, {
-    createNew: true,
+  await fs.writeFile(path, `${JSON.stringify(value, null, 2)}\n`, {
+    flag: "wx",
     mode: 0o600,
   });
 }
@@ -236,9 +242,9 @@ function invalidUsage(): never {
 
 if (import.meta.main) {
   try {
-    await runExtensionCli(Deno.args);
+    await runExtensionCli(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
-    Deno.exit(1);
+    process.exit(1);
   }
 }

@@ -17,12 +17,30 @@
     "actions"
   ],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 2 },
-    "id": { "$ref": "#/$defs/identifier" },
-    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
-    "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
-    "publisher": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 2
+    },
+    "id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "publisher": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
     "version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
@@ -32,7 +50,9 @@
       "additionalProperties": false,
       "required": ["kind", "entrypoint"],
       "properties": {
-        "kind": { "const": "deno-worker" },
+        "kind": {
+          "enum": ["node-process", "deno-worker"]
+        },
         "entrypoint": {
           "type": "string",
           "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.(?:js|mjs|ts|mts)$"
@@ -42,7 +62,9 @@
     "capabilities": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/identifier" }
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
     },
     "permissions": {
       "type": "object",
@@ -73,7 +95,11 @@
                 "type": "array",
                 "minItems": 1,
                 "uniqueItems": true,
-                "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
               }
             }
           }
@@ -96,19 +122,37 @@
         "additionalProperties": false,
         "required": ["name", "idempotent", "timeoutSeconds"],
         "properties": {
-          "name": { "$ref": "#/$defs/identifier" },
-          "description": { "type": "string", "minLength": 1, "maxLength": 500 },
-          "idempotent": { "type": "boolean" },
-          "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 120 },
-          "inputSchema": { "$ref": "#/$defs/jsonSchemaPath" },
-          "outputSchema": { "$ref": "#/$defs/jsonSchemaPath" }
+          "name": {
+            "$ref": "#/$defs/identifier"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "idempotent": {
+            "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "inputSchema": {
+            "$ref": "#/$defs/jsonSchemaPath"
+          },
+          "outputSchema": {
+            "$ref": "#/$defs/jsonSchemaPath"
+          }
         }
       }
     },
     "contributions": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/telephonyProviderContribution" }
+      "items": {
+        "$ref": "#/$defs/telephonyProviderContribution"
+      }
     },
     "configurationSchema": {
       "type": "string",
@@ -120,7 +164,9 @@
     },
     "translations": {
       "type": "object",
-      "propertyNames": { "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$" },
+      "propertyNames": {
+        "pattern": "^[a-z]{2}(?:-[A-Z]{2})?$"
+      },
       "additionalProperties": {
         "type": "string",
         "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.json$"
@@ -134,12 +180,24 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "install": { "$ref": "#/$defs/identifier" },
-        "configure": { "$ref": "#/$defs/identifier" },
-        "activate": { "$ref": "#/$defs/identifier" },
-        "deactivate": { "$ref": "#/$defs/identifier" },
-        "migrate": { "$ref": "#/$defs/identifier" },
-        "uninstall": { "$ref": "#/$defs/identifier" }
+        "install": {
+          "$ref": "#/$defs/identifier"
+        },
+        "configure": {
+          "$ref": "#/$defs/identifier"
+        },
+        "activate": {
+          "$ref": "#/$defs/identifier"
+        },
+        "deactivate": {
+          "$ref": "#/$defs/identifier"
+        },
+        "migrate": {
+          "$ref": "#/$defs/identifier"
+        },
+        "uninstall": {
+          "$ref": "#/$defs/identifier"
+        }
       }
     },
     "health": {
@@ -147,8 +205,14 @@
       "additionalProperties": false,
       "required": ["action", "timeoutSeconds"],
       "properties": {
-        "action": { "$ref": "#/$defs/identifier" },
-        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 60 }
+        "action": {
+          "$ref": "#/$defs/identifier"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
       }
     }
   },
@@ -162,19 +226,35 @@
       "additionalProperties": false,
       "required": ["id", "area", "contract", "contractVersion", "operations"],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "area": { "const": "telephony" },
-        "contract": { "const": "telephony.provider" },
-        "contractVersion": { "const": 1 },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "area": {
+          "const": "telephony"
+        },
+        "contract": {
+          "const": "telephony.provider"
+        },
+        "contractVersion": {
+          "const": 1
+        },
         "operations": {
           "type": "object",
           "additionalProperties": false,
           "required": ["startCall", "endCall", "synchronizeCalls", "health"],
           "properties": {
-            "startCall": { "$ref": "#/$defs/identifier" },
-            "endCall": { "$ref": "#/$defs/identifier" },
-            "synchronizeCalls": { "$ref": "#/$defs/identifier" },
-            "health": { "$ref": "#/$defs/identifier" }
+            "startCall": {
+              "$ref": "#/$defs/identifier"
+            },
+            "endCall": {
+              "$ref": "#/$defs/identifier"
+            },
+            "synchronizeCalls": {
+              "$ref": "#/$defs/identifier"
+            },
+            "health": {
+              "$ref": "#/$defs/identifier"
+            }
           }
         }
       }

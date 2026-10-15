@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import {
   assert,
   assertEquals,
@@ -5,7 +6,7 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
-} from "@std/assert";
+} from "../test/assert.ts";
 import {
   badRequest,
   conflict,
@@ -104,7 +105,7 @@ function fetchUrl(input: FetchInput): string {
   return input.url;
 }
 
-Deno.test("defineHttp registers functional handlers, all fallback, middleware, and error handling", async () => {
+test("defineHttp registers functional handlers, all fallback, middleware, and error handling", async () => {
   const calls: string[] = [];
   const route = defineHttp({
     use: [
@@ -127,18 +128,21 @@ Deno.test("defineHttp registers functional handlers, all fallback, middleware, a
   assert(isHttpRouteDefinition(route));
   assertEquals(await (await handlerFor(route, "GET")(context())).text(), "all");
 
-  const postResponse = await handlerFor(route, "POST")(
-    context(new Request("https://connector.local/users", { method: "POST" })),
-  );
+  const postResponse = await handlerFor(
+    route,
+    "POST",
+  )(context(new Request("https://connector.local/users", { method: "POST" })));
   assertEquals(postResponse.status, 201);
   assertEquals(await postResponse.text(), "created");
   assertEquals(calls, ["before:GET", "after:200", "before:POST", "after:201"]);
 
   const failingRoute = defineHttp({
-    use: [async (_ctx, next) => {
-      await next();
-      return await next();
-    }],
+    use: [
+      async (_ctx, next) => {
+        await next();
+        return await next();
+      },
+    ],
     get: (ctx) => ctx.res.ok().text("ok"),
     onError: (errorValue, ctx) => {
       assertInstanceOf(errorValue, RuntimeError);
@@ -151,7 +155,7 @@ Deno.test("defineHttp registers functional handlers, all fallback, middleware, a
   assertEquals(await errorResponse.text(), "MIDDLEWARE_ERROR");
 });
 
-Deno.test("defineHttp propagates handler errors when no error handler is configured", async () => {
+test("defineHttp propagates handler errors when no error handler is configured", async () => {
   const route = defineHttp({
     get: () => {
       throw new Error("boom");
@@ -165,7 +169,7 @@ Deno.test("defineHttp propagates handler errors when no error handler is configu
   );
 });
 
-Deno.test("http fluent builder registers methods and applies middleware", async () => {
+test("http fluent builder registers methods and applies middleware", async () => {
   const route = http()
     .use(async (ctx, next) => {
       const response = await next();
@@ -185,7 +189,10 @@ Deno.test("http fluent builder registers methods and applies middleware", async 
   assertEquals(getResponse.headers.get("x-powered-by"), "sdk");
   assertEquals(await getResponse.text(), "42");
 
-  const postResponse = await handlerFor(route, "POST")(
+  const postResponse = await handlerFor(
+    route,
+    "POST",
+  )(
     context(new Request("https://connector.local/users", { method: "POST" }), {
       params: {},
     }),
@@ -194,48 +201,75 @@ Deno.test("http fluent builder registers methods and applies middleware", async 
   assertEquals(await postResponse.json(), { path: "/users" });
 
   assertEquals(
-    await (await handlerFor(route, "PUT")(
-      context(
-        new Request("https://connector.local/users/42", { method: "PUT" }),
-      ),
-    )).text(),
+    await (
+      await handlerFor(
+        route,
+        "PUT",
+      )(
+        context(
+          new Request("https://connector.local/users/42", { method: "PUT" }),
+        ),
+      )
+    ).text(),
     "PUT",
   );
   assertEquals(
-    await (await handlerFor(route, "PATCH")(
-      context(
-        new Request("https://connector.local/users/42", { method: "PATCH" }),
-      ),
-    )).text(),
+    await (
+      await handlerFor(
+        route,
+        "PATCH",
+      )(
+        context(
+          new Request("https://connector.local/users/42", { method: "PATCH" }),
+        ),
+      )
+    ).text(),
     "PATCH",
   );
   assertEquals(
-    (await handlerFor(route, "DELETE")(
-      context(
-        new Request("https://connector.local/users/42", { method: "DELETE" }),
-      ),
-    )).status,
+    (
+      await handlerFor(
+        route,
+        "DELETE",
+      )(
+        context(
+          new Request("https://connector.local/users/42", { method: "DELETE" }),
+        ),
+      )
+    ).status,
     204,
   );
   assertEquals(
-    await (await handlerFor(route, "HEAD")(
-      context(
-        new Request("https://connector.local/users/42", { method: "HEAD" }),
-      ),
-    )).text(),
+    await (
+      await handlerFor(
+        route,
+        "HEAD",
+      )(
+        context(
+          new Request("https://connector.local/users/42", { method: "HEAD" }),
+        ),
+      )
+    ).text(),
     "",
   );
   assertEquals(
-    await (await handlerFor(route, "OPTIONS")(
-      context(
-        new Request("https://connector.local/users/42", { method: "OPTIONS" }),
-      ),
-    )).text(),
+    await (
+      await handlerFor(
+        route,
+        "OPTIONS",
+      )(
+        context(
+          new Request("https://connector.local/users/42", {
+            method: "OPTIONS",
+          }),
+        ),
+      )
+    ).text(),
     "OPTIONS",
   );
 });
 
-Deno.test("http fluent builder supports all handlers and error handlers", async () => {
+test("http fluent builder supports all handlers and error handlers", async () => {
   const route = http()
     .onError((errorValue, ctx) => {
       assertInstanceOf(errorValue, Error);
@@ -245,7 +279,10 @@ Deno.test("http fluent builder supports all handlers and error handlers", async 
       throw new Error("not today");
     });
 
-  const response = await handlerFor(route, "PATCH")(
+  const response = await handlerFor(
+    route,
+    "PATCH",
+  )(
     context(
       new Request("https://connector.local/anything", { method: "PATCH" }),
     ),
@@ -256,49 +293,40 @@ Deno.test("http fluent builder supports all handlers and error handlers", async 
   });
 });
 
-Deno.test("http fluent builder throws on duplicate method registration", () => {
-  const error = assertThrows(
-    () => {
-      // deno-lint-ignore no-explicit-any
-      (http() as any).get(() => new Response("first")).get(() =>
-        new Response("second")
-      );
-    },
-    RuntimeError,
-  );
+test("http fluent builder throws on duplicate method registration", () => {
+  const error = assertThrows(() => {
+    // Exercise fluent-builder runtime validation beyond its compile-time API.
+    (http() as any)
+      .get(() => new Response("first"))
+      .get(() => new Response("second"));
+  }, RuntimeError);
   assertEquals(error.code, "DUPLICATE_HANDLER");
   assert(error.message.includes("GET"));
 });
 
-Deno.test("http fluent builder throws when all() conflicts with existing handler", () => {
-  const error = assertThrows(
-    () => {
-      // deno-lint-ignore no-explicit-any
-      (http() as any).get(() => new Response("get")).all(() =>
-        new Response("all")
-      );
-    },
-    RuntimeError,
-  );
+test("http fluent builder throws when all() conflicts with existing handler", () => {
+  const error = assertThrows(() => {
+    // Exercise fluent-builder runtime validation beyond its compile-time API.
+    (http() as any)
+      .get(() => new Response("get"))
+      .all(() => new Response("all"));
+  }, RuntimeError);
   assertEquals(error.code, "DUPLICATE_HANDLER");
   assert(error.message.includes("GET"));
 });
 
-Deno.test("http fluent builder throws when registering method after all()", () => {
-  const error = assertThrows(
-    () => {
-      // deno-lint-ignore no-explicit-any
-      (http() as any).all(() => new Response("all")).post(() =>
-        new Response("post")
-      );
-    },
-    RuntimeError,
-  );
+test("http fluent builder throws when registering method after all()", () => {
+  const error = assertThrows(() => {
+    // Exercise fluent-builder runtime validation beyond its compile-time API.
+    (http() as any)
+      .all(() => new Response("all"))
+      .post(() => new Response("post"));
+  }, RuntimeError);
   assertEquals(error.code, "DUPLICATE_HANDLER");
   assert(error.message.includes("POST"));
 });
 
-Deno.test("http fluent builder allows multiple middleware registrations", async () => {
+test("http fluent builder allows multiple middleware registrations", async () => {
   const order: string[] = [];
   const route = http()
     .use((_ctx, next) => {
@@ -318,7 +346,7 @@ Deno.test("http fluent builder allows multiple middleware registrations", async 
   assertEquals(order, ["first", "second", "handler"]);
 });
 
-Deno.test("isHttpRouteDefinition rejects non-route values", () => {
+test("isHttpRouteDefinition rejects non-route values", () => {
   assertEquals(isHttpRouteDefinition(null), false);
   assertEquals(
     isHttpRouteDefinition({ protocol: "imap", handlers: {} }),
@@ -331,7 +359,7 @@ Deno.test("isHttpRouteDefinition rejects non-route values", () => {
   );
 });
 
-Deno.test("createHttpContext exposes request, params, query, cookies, env, and background tasks", async () => {
+test("createHttpContext exposes request, params, query, cookies, env, and background tasks", async () => {
   const tasks: Promise<unknown>[] = [];
   const ctx = context(undefined, {
     waitUntil: (task) => tasks.push(task),
@@ -368,11 +396,14 @@ Deno.test("createHttpContext exposes request, params, query, cookies, env, and b
   assertEquals(ctx.req.query.has("page"), true);
   assertEquals(ctx.req.query.int("page"), 2);
   assertEquals(ctx.req.query.int("missing", 10), 10);
-  assertEquals([...ctx.req.query.entries()], [
-    ["tag", "a"],
-    ["tag", "b"],
-    ["page", "2"],
-  ]);
+  assertEquals(
+    [...ctx.req.query.entries()],
+    [
+      ["tag", "a"],
+      ["tag", "b"],
+      ["page", "2"],
+    ],
+  );
 
   const queryCopy = ctx.req.query.toURLSearchParams();
   queryCopy.set("page", "3");
@@ -383,7 +414,7 @@ Deno.test("createHttpContext exposes request, params, query, cookies, env, and b
   await tasks[0];
 });
 
-Deno.test("query facade parses numbers and booleans and rejects invalid values", () => {
+test("query facade parses numbers and booleans and rejects invalid values", () => {
   const ctx = context(
     new Request(
       "https://connector.local/search?count=3&ratio=2.5&enabled=yes&disabled=off&badInt=1.2&badNumber=x&badBoolean=maybe",
@@ -400,7 +431,7 @@ Deno.test("query facade parses numbers and booleans and rejects invalid values",
   assertThrows(() => ctx.req.query.boolean("badBoolean"), RuntimeError);
 });
 
-Deno.test("request body facade reads JSON, text, urlencoded, form data, binary, and auto formats", async () => {
+test("request body facade reads JSON, text, urlencoded, form data, binary, and auto formats", async () => {
   const jsonCtx = context(
     new Request("https://connector.local", {
       method: "POST",
@@ -478,7 +509,7 @@ Deno.test("request body facade reads JSON, text, urlencoded, form data, binary, 
   assertEquals(thrown.code, "INVALID_JSON");
 });
 
-Deno.test("response helpers and builders create typed responses", async () => {
+test("response helpers and builders create typed responses", async () => {
   const jsonResponse = json({ ok: true }, { status: 202 });
   assertEquals(jsonResponse.status, 202);
   assertEquals(
@@ -551,15 +582,16 @@ Deno.test("response helpers and builders create typed responses", async () => {
     "",
   );
   assertEquals(
-    new HttpResponseFactory("HEAD").ok().text("hidden").headers.get(
-      "content-type",
-    ),
+    new HttpResponseFactory("HEAD")
+      .ok()
+      .text("hidden")
+      .headers.get("content-type"),
     null,
   );
   assertThrows(() => status(200).redirect("https://example.com"), RuntimeError);
 });
 
-Deno.test("response from builder can rewrite status, headers, and body", async () => {
+test("response from builder can rewrite status, headers, and body", async () => {
   const source = new Response(JSON.stringify({ ok: true }), {
     status: 201,
     headers: {
@@ -591,74 +623,90 @@ Deno.test("response from builder can rewrite status, headers, and body", async (
   assertEquals(await emptyResponse.text(), "");
 });
 
-Deno.test("upstream builder sends configured requests", async () => {
-  await withMockFetch((input, init) => {
-    const headers = new Headers(init?.headers);
-    assertEquals(
-      fetchUrl(input),
-      "https://api.example/users/a%20b?active=true&tag=one&tag=two",
-    );
-    assertEquals(init?.method, "POST");
-    assertEquals(headers.get("authorization"), "Bearer token");
-    assertEquals(headers.get("x-source"), "sdk");
-    assertEquals(headers.get("content-type"), "application/json");
-    assertEquals(init?.body, JSON.stringify({ name: "Ada" }));
-    assertInstanceOf(init?.signal, AbortSignal);
-    return Response.json({ upstream: true }, { status: 207 });
-  }, async () => {
-    const response = await upstream("https://api.example/base/")
-      .path("/users/{id}", { id: "a b" })
-      .queryParam("active", true)
-      .queryFrom(
-        new URLSearchParams([[
-          "tag",
-          "one",
-        ], ["tag", "two"]]),
-      )
-      .headersFrom({ "x-source": "sdk" })
-      .bearer("token")
-      .timeout(500)
-      .post({ name: "Ada" });
+test("upstream builder sends configured requests", async () => {
+  await withMockFetch(
+    (input, init) => {
+      const headers = new Headers(init?.headers);
+      assertEquals(
+        fetchUrl(input),
+        "https://api.example/users/a%20b?active=true&tag=one&tag=two",
+      );
+      assertEquals(init?.method, "POST");
+      assertEquals(headers.get("authorization"), "Bearer token");
+      assertEquals(headers.get("x-source"), "sdk");
+      assertEquals(headers.get("content-type"), "application/json");
+      assertEquals(init?.body, JSON.stringify({ name: "Ada" }));
+      assertInstanceOf(init?.signal, AbortSignal);
+      return Response.json({ upstream: true }, { status: 207 });
+    },
+    async () => {
+      const response = await upstream("https://api.example/base/")
+        .path("/users/{id}", { id: "a b" })
+        .queryParam("active", true)
+        .queryFrom(
+          new URLSearchParams([
+            ["tag", "one"],
+            ["tag", "two"],
+          ]),
+        )
+        .headersFrom({ "x-source": "sdk" })
+        .bearer("token")
+        .timeout(500)
+        .post({ name: "Ada" });
 
-    assertEquals(response.status, 207);
-    assertEquals(await response.json(), { upstream: true });
-  });
+      assertEquals(response.status, 207);
+      assertEquals(await response.json(), { upstream: true });
+    },
+  );
 
-  await withMockFetch((_input, init) => {
-    assertEquals(init?.method, "GET");
-    assertEquals(init?.body, undefined);
-    return new Response("ok");
-  }, async () => {
-    assertEquals(
-      await upstream("https://api.example").body("ignored").get().then((r) =>
-        r.text()
-      ),
-      "ok",
-    );
-  });
+  await withMockFetch(
+    (_input, init) => {
+      assertEquals(init?.method, "GET");
+      assertEquals(init?.body, undefined);
+      return new Response("ok");
+    },
+    async () => {
+      assertEquals(
+        await upstream("https://api.example")
+          .body("ignored")
+          .get()
+          .then((r) => r.text()),
+        "ok",
+      );
+    },
+  );
 
-  await withMockFetch((_input, init) => {
-    assertEquals(init?.method, "PUT");
-    assertEquals(init?.body, "plain");
-    return new Response("ok");
-  }, async () => {
-    await upstream("https://api.example").textBody("plain").put();
-  });
+  await withMockFetch(
+    (_input, init) => {
+      assertEquals(init?.method, "PUT");
+      assertEquals(init?.body, "plain");
+      return new Response("ok");
+    },
+    async () => {
+      await upstream("https://api.example").textBody("plain").put();
+    },
+  );
 
-  await withMockFetch((_input, init) => {
-    assertEquals(init?.method, "PATCH");
-    assertEquals(init?.body, JSON.stringify({ patch: true }));
-    return new Response("ok");
-  }, async () => {
-    await upstream("https://api.example").patch({ patch: true });
-  });
+  await withMockFetch(
+    (_input, init) => {
+      assertEquals(init?.method, "PATCH");
+      assertEquals(init?.body, JSON.stringify({ patch: true }));
+      return new Response("ok");
+    },
+    async () => {
+      await upstream("https://api.example").patch({ patch: true });
+    },
+  );
 
-  await withMockFetch((_input, init) => {
-    assertEquals(init?.method, "DELETE");
-    return new Response("ok");
-  }, async () => {
-    await upstream("https://api.example").delete();
-  });
+  await withMockFetch(
+    (_input, init) => {
+      assertEquals(init?.method, "DELETE");
+      return new Response("ok");
+    },
+    async () => {
+      await upstream("https://api.example").delete();
+    },
+  );
 
   assertThrows(
     () => upstream("https://api.example").path("/users/{missing}", {}),
@@ -667,21 +715,25 @@ Deno.test("upstream builder sends configured requests", async () => {
   );
 });
 
-Deno.test("context upstream helper adds request id", async () => {
-  await withMockFetch((_input, init) => {
-    assertEquals(new Headers(init?.headers).get("x-request-id"), "req-1");
-    return new Response("ok");
-  }, async () => {
-    assertEquals(
-      await context().upstream("https://api.example").get().then((r) =>
-        r.text()
-      ),
-      "ok",
-    );
-  });
+test("context upstream helper adds request id", async () => {
+  await withMockFetch(
+    (_input, init) => {
+      assertEquals(new Headers(init?.headers).get("x-request-id"), "req-1");
+      return new Response("ok");
+    },
+    async () => {
+      assertEquals(
+        await context()
+          .upstream("https://api.example")
+          .get()
+          .then((r) => r.text()),
+        "ok",
+      );
+    },
+  );
 });
 
-Deno.test("proxy builder forwards transformed HTTP requests", async () => {
+test("proxy builder forwards transformed HTTP requests", async () => {
   const ctx = context(
     new Request("https://connector.local/proxy/orders?include=items", {
       method: "POST",
@@ -693,61 +745,68 @@ Deno.test("proxy builder forwards transformed HTTP requests", async () => {
     }),
   );
 
-  await withMockFetch((input, init) => {
-    const headers = new Headers(init?.headers);
-    assertEquals(
-      fetchUrl(input),
-      "https://internal.example/orders?include=items",
-    );
-    assertEquals(init?.method, "POST");
-    assertEquals(headers.get("x-forward"), "yes");
-    assertEquals(headers.get("x-remove"), null);
-    assertEquals(headers.get("x-added"), "1");
-    assertEquals(init?.body, "payload");
-    assertInstanceOf(init?.signal, AbortSignal);
-    return new Response("proxied", {
-      status: 202,
-      headers: {
-        "x-keep": "yes",
-        "x-secret": "remove",
-      },
-    });
-  }, async () => {
-    const response = await proxy(ctx)
-      .to("https://internal.example")
-      .stripPrefix("/proxy")
-      .forwardHeaders()
-      .removeRequestHeader("x-remove")
-      .header("x-added", "1")
-      .bearer(undefined)
-      .removeResponseHeader("x-secret")
-      .timeout(500)
-      .send();
+  await withMockFetch(
+    (input, init) => {
+      const headers = new Headers(init?.headers);
+      assertEquals(
+        fetchUrl(input),
+        "https://internal.example/orders?include=items",
+      );
+      assertEquals(init?.method, "POST");
+      assertEquals(headers.get("x-forward"), "yes");
+      assertEquals(headers.get("x-remove"), null);
+      assertEquals(headers.get("x-added"), "1");
+      assertEquals(init?.body, "payload");
+      assertInstanceOf(init?.signal, AbortSignal);
+      return new Response("proxied", {
+        status: 202,
+        headers: {
+          "x-keep": "yes",
+          "x-secret": "remove",
+        },
+      });
+    },
+    async () => {
+      const response = await proxy(ctx)
+        .to("https://internal.example")
+        .stripPrefix("/proxy")
+        .forwardHeaders()
+        .removeRequestHeader("x-remove")
+        .header("x-added", "1")
+        .bearer(undefined)
+        .removeResponseHeader("x-secret")
+        .timeout(500)
+        .send();
 
-    assertEquals(response.status, 202);
-    assertEquals(response.headers.get("x-keep"), "yes");
-    assertEquals(response.headers.get("x-secret"), null);
-    assertEquals(await response.text(), "proxied");
-  });
+      assertEquals(response.status, 202);
+      assertEquals(response.headers.get("x-keep"), "yes");
+      assertEquals(response.headers.get("x-secret"), null);
+      assertEquals(await response.text(), "proxied");
+    },
+  );
 });
 
-Deno.test("proxy builder rejects missing targets and skips GET bodies", async () => {
+test("proxy builder rejects missing targets and skips GET bodies", async () => {
   await assertRejects(
     () => context().proxy.send(),
     RuntimeError,
     "HTTP proxy target is not configured",
   );
 
-  await withMockFetch((_input, init) => {
-    assertEquals(init?.method, "GET");
-    assertEquals(init?.body, undefined);
-    return new Response("ok");
-  }, async () => {
-    assertEquals(
-      await context().proxy.to("https://internal.example").send().then((r) =>
-        r.text()
-      ),
-      "ok",
-    );
-  });
+  await withMockFetch(
+    (_input, init) => {
+      assertEquals(init?.method, "GET");
+      assertEquals(init?.body, undefined);
+      return new Response("ok");
+    },
+    async () => {
+      assertEquals(
+        await context()
+          .proxy.to("https://internal.example")
+          .send()
+          .then((r) => r.text()),
+        "ok",
+      );
+    },
+  );
 });

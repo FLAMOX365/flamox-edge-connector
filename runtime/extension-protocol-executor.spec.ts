@@ -1,9 +1,10 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import type { JsonValue } from "../sdk/extension.ts";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../test/assert.ts";
+import type { JsonValue } from "@edge-connector/sdk/extension";
 import { ExtensionProtocolExecutor } from "./extension-protocol-executor.ts";
 import { RuntimeError } from "./runtime-error.ts";
 
-Deno.test("ExtensionProtocolExecutor invokes only an exact extension action route", async () => {
+test("ExtensionProtocolExecutor invokes only an exact extension action route", async () => {
   const calls: unknown[][] = [];
   const executor = new ExtensionProtocolExecutor({
     execute: (requestId, extensionId, action, input) => {
@@ -22,17 +23,19 @@ Deno.test("ExtensionProtocolExecutor invokes only an exact extension action rout
     },
   });
 
-  assertEquals(calls, [[
-    "00000000-0000-0000-0000-000000000001",
-    "telephony.fritzbox",
-    "call-log.import",
-    { cursor: "42" },
-  ]]);
+  assertEquals(calls, [
+    [
+      "00000000-0000-0000-0000-000000000001",
+      "telephony.fritzbox",
+      "call-log.import",
+      { cursor: "42" },
+    ],
+  ]);
   assertEquals(response.statusCode, 200);
   assertEquals(response.body, '{"accepted":true}');
 });
 
-Deno.test("ExtensionProtocolExecutor fails closed for arbitrary targets and invalid input", async () => {
+test("ExtensionProtocolExecutor fails closed for arbitrary targets and invalid input", async () => {
   const executor = new ExtensionProtocolExecutor({
     execute: () => Promise.resolve(null),
   });

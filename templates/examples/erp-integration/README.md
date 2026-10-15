@@ -26,7 +26,7 @@ SAP ERP Backend
 
 ```
 erp-integration/
-├── deno.json
+├── package.json
 ├── docker-compose.yml
 ├── .env.example
 └── functions/
@@ -98,3 +98,11 @@ curl -X POST http://localhost:8080/erp/customers \
   -H "Content-Type: application/json" \
       -d '{"Name": "Example Ltd", "City": "London"}'
 ```
+
+## Node.js development
+
+From the connector root, run `yarn install --immutable`, `yarn build`, and
+`yarn check:templates`. The examples use the built SDK through Yarn workspaces.
+When copying an example outside this checkout, replace its SDK dependency with a
+`file:` reference to the SDK in a built, pinned connector checkout, then run
+`yarn install` in the copied project.

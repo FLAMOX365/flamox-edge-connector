@@ -1,11 +1,12 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assert, assertEquals } from "../test/assert.ts";
 import type { ConnectorConfig } from "./config.ts";
 import { ConnectorRuntime, type ProtocolExecutor } from "./connector.ts";
 import { createLogger } from "./logger.ts";
 import { createRuntimeStatus } from "./runtime-status.ts";
 import {
   computeBackoffDelay,
-  runControlPlaneWebSocketClient,
+  runControlPlaneWebSocketClient as runClient,
 } from "./websocket-client.ts";
 
 const baseConfig: ConnectorConfig = {
@@ -46,7 +47,7 @@ const silentLogger = createLogger("error", {
   warn: () => undefined,
 });
 
-Deno.test("computeBackoffDelay is deterministic with no jitter and grows then saturates", () => {
+test("computeBackoffDelay is deterministic with no jitter and grows then saturates", () => {
   const initial = 1_000;
   const max = 30_000;
 
@@ -59,7 +60,7 @@ Deno.test("computeBackoffDelay is deterministic with no jitter and grows then sa
   assert(Number.isFinite(computeBackoffDelay(1_000, initial, max, 0)));
 });
 
-Deno.test("computeBackoffDelay keeps jittered delays within [cap*(1-ratio), cap]", () => {
+test("computeBackoffDelay keeps jittered delays within [cap*(1-ratio), cap]", () => {
   const initial = 1_000;
   const max = 30_000;
   const ratio = 0.5;
@@ -72,11 +73,17 @@ Deno.test("computeBackoffDelay keeps jittered delays within [cap*(1-ratio), cap]
   }
 
   // rng() === 0 yields the floor; full jitter ratio yields [0, cap].
-  assertEquals(computeBackoffDelay(1, initial, max, 1, () => 0), 0);
-  assertEquals(computeBackoffDelay(1, initial, max, 1, () => 1), 1_000);
+  assertEquals(
+    computeBackoffDelay(1, initial, max, 1, () => 0),
+    0,
+  );
+  assertEquals(
+    computeBackoffDelay(1, initial, max, 1, () => 1),
+    1_000,
+  );
 });
 
-Deno.test("runControlPlaneWebSocketClient returns without opening a socket when no URL is configured", async () => {
+test("runControlPlaneWebSocketClient returns without opening a socket when no URL is configured", async () => {
   const originalWebSocket = globalThis.WebSocket;
   Object.defineProperty(globalThis, "WebSocket", {
     configurable: true,
@@ -101,7 +108,7 @@ Deno.test("runControlPlaneWebSocketClient returns without opening a socket when 
   }
 });
 
-Deno.test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and closes on abort", async () => {
+test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and closes on abort", async () => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "open";
     const abortController = new AbortController();
@@ -125,7 +132,7 @@ Deno.test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and c
   });
 });
 
-Deno.test("runControlPlaneWebSocketClient never rejects when opening keeps failing", async () => {
+test("runControlPlaneWebSocketClient never rejects when opening keeps failing", async () => {
   // websocketUrl is set but auth config is missing => openWebSocket throws on
   // every attempt. The loop must absorb it and keep retrying, never reject.
   await withFakeCloud(async ({ status }) => {
@@ -147,7 +154,7 @@ Deno.test("runControlPlaneWebSocketClient never rejects when opening keeps faili
   });
 });
 
-Deno.test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (anti-flap)", async () => {
+test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (anti-flap)", async () => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "openThenClose";
     const abortController = new AbortController();
@@ -169,7 +176,7 @@ Deno.test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (
   });
 });
 
-Deno.test("runControlPlaneWebSocketClient force-closes a half-open socket via the watchdog", async () => {
+test("runControlPlaneWebSocketClient force-closes a half-open socket via the watchdog", async () => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "openSilent";
     const abortController = new AbortController();
@@ -194,7 +201,7 @@ Deno.test("runControlPlaneWebSocketClient force-closes a half-open socket via th
   });
 });
 
-Deno.test("runControlPlaneWebSocketClient keeps a socket with inbound traffic open", async () => {
+test("runControlPlaneWebSocketClient keeps a socket with inbound traffic open", async () => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "openWithInbound";
     const abortController = new AbortController();
@@ -222,7 +229,7 @@ Deno.test("runControlPlaneWebSocketClient keeps a socket with inbound traffic op
   });
 });
 
-Deno.test("runControlPlaneWebSocketClient retries when the socket never opens (connect timeout)", async () => {
+test("runControlPlaneWebSocketClient retries when the socket never opens (connect timeout)", async () => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "neverOpen";
     const abortController = new AbortController();
@@ -241,7 +248,7 @@ Deno.test("runControlPlaneWebSocketClient retries when the socket never opens (c
   });
 });
 
-Deno.test("runControlPlaneWebSocketClient does not hang when aborted during the token fetch", async () => {
+test("runControlPlaneWebSocketClient does not hang when aborted during the token fetch", async () => {
   const originalFetch = globalThis.fetch;
   const originalWebSocket = globalThis.WebSocket;
   const abortController = new AbortController();
@@ -293,9 +300,9 @@ function createRuntime(): ConnectorRuntime {
 
 /** Stubs fetch (token endpoint) and WebSocket, restoring them afterwards. */
 async function withFakeCloud(
-  run: (
-    ctx: { status: ReturnType<typeof createRuntimeStatus> },
-  ) => Promise<void>,
+  run: (ctx: {
+    status: ReturnType<typeof createRuntimeStatus>;
+  }) => Promise<void>,
 ): Promise<void> {
   const originalFetch = globalThis.fetch;
   const originalWebSocket = globalThis.WebSocket;
@@ -304,9 +311,7 @@ async function withFakeCloud(
     value: (input: string | URL | Request) => {
       const url = input instanceof Request ? input.url : input.toString();
       if (url === "https://identity.example/oauth/token") {
-        return Promise.resolve(
-          Response.json({ access_token: "access-token" }),
-        );
+        return Promise.resolve(Response.json({ access_token: "access-token" }));
       }
       return Promise.resolve(new Response(null, { status: 404 }));
     },
@@ -416,3 +421,20 @@ class FakeWebSocket extends EventTarget {
     this.dispatchEvent(new Event("close"));
   }
 }
+
+const runControlPlaneWebSocketClient: typeof runClient = (
+  config,
+  runtime,
+  signal,
+  status,
+  logger,
+) =>
+  runClient(
+    config,
+    runtime,
+    signal,
+    status,
+    logger,
+    (url, options) =>
+      new FakeWebSocket(url, options) as unknown as import("ws").WebSocket,
+  );

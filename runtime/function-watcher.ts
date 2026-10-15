@@ -1,4 +1,6 @@
-import { dirname, resolve } from "@std/path";
+import { isNotFound } from "./files.ts";
+import * as fs from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import type { RuntimeLogger } from "./logger.ts";
 
 export type FunctionWatcherOptions = {
@@ -17,8 +19,8 @@ export async function watchFunctionsDirectory(
   options: FunctionWatcherOptions,
 ): Promise<void> {
   const functionsDir = resolve(options.functionsDir);
-  let watcher: Deno.FsWatcher | undefined;
-  const closeWatcher = () => watcher?.close();
+  let watcher: ReturnType<typeof fs.watch> | undefined;
+  const closeWatcher = () => void watcher?.return?.();
   options.signal.addEventListener("abort", closeWatcher, { once: true });
 
   try {
@@ -28,24 +30,31 @@ export async function watchFunctionsDirectory(
         options.logger.info(
           `Watching functions directory ${functionsDir} via ${watchPath}`,
         );
-        watcher = Deno.watchFs(watchPath, { recursive: true });
+        watcher = fs.watch(watchPath, {
+          recursive: true,
+          signal: options.signal,
+        });
 
         for await (const event of watcher) {
           if (options.signal.aborted) {
             break;
           }
           if (
-            !event.paths.some((path) => isFunctionsPath(functionsDir, path))
+            event.filename !== null &&
+            !isFunctionsPath(
+              functionsDir,
+              resolve(watchPath, event.filename.toString()),
+            )
           ) {
             continue;
           }
 
           options.logger.info(
-            `Functions directory changed (${event.kind}); reloading routes`,
+            `Functions directory changed (${event.eventType}); reloading routes`,
           );
           await sleep(options.debounceMs ?? defaultDebounceMs, options.signal);
           if (!options.signal.aborted) {
-            await options.reload(`filesystem ${event.kind}`);
+            await options.reload(`filesystem ${event.eventType}`);
           }
         }
       } catch (error) {
@@ -53,7 +62,7 @@ export async function watchFunctionsDirectory(
           options.logger.warn("Functions watcher stopped; restarting", error);
         }
       } finally {
-        watcher?.close();
+        void watcher?.return?.();
         watcher = undefined;
       }
 
@@ -66,15 +75,17 @@ export async function watchFunctionsDirectory(
     }
   } finally {
     options.signal.removeEventListener("abort", closeWatcher);
-    watcher?.close();
+    void watcher?.return?.();
   }
 }
 
 export function isFunctionsPath(functionsDir: string, path: string): boolean {
   const normalizedFunctionsDir = normalizePath(resolve(functionsDir));
   const normalizedPath = normalizePath(resolve(path));
-  return normalizedPath === normalizedFunctionsDir ||
-    normalizedPath.startsWith(`${normalizedFunctionsDir}/`);
+  return (
+    normalizedPath === normalizedFunctionsDir ||
+    normalizedPath.startsWith(`${normalizedFunctionsDir}/`)
+  );
 }
 
 async function findExistingWatchPath(path: string): Promise<string> {
@@ -82,10 +93,10 @@ async function findExistingWatchPath(path: string): Promise<string> {
 
   while (true) {
     try {
-      const stat = await Deno.stat(current);
-      return stat.isDirectory ? current : dirname(current);
+      const stat = await fs.stat(current);
+      return stat.isDirectory() ? current : dirname(current);
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) {
+      if (!isNotFound(error)) {
         throw error;
       }
     }

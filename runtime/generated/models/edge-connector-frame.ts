@@ -11,12 +11,11 @@ export type _EdgeConnectorFrameBase = {
 type EdgeConnectorFrameDiscriminator = "request" | "response" | "heartbeat";
 
 export type EdgeConnectorFrame<
-  TType extends EdgeConnectorFrameDiscriminator =
-    EdgeConnectorFrameDiscriminator,
-> =
-  & _EdgeConnectorFrameBase
-  & ({
-    "request": { type: "request" } & EdgeConnectorRequestFrame;
-    "response": { type: "response" } & EdgeConnectorResponseFrame;
-    "heartbeat": { type: "heartbeat" } & EdgeConnectorHeartbeatFrame;
-  })[TType];
+  TType extends
+    EdgeConnectorFrameDiscriminator = EdgeConnectorFrameDiscriminator,
+> = _EdgeConnectorFrameBase &
+  {
+    request: { type: "request" } & EdgeConnectorRequestFrame;
+    response: { type: "response" } & EdgeConnectorResponseFrame;
+    heartbeat: { type: "heartbeat" } & EdgeConnectorHeartbeatFrame;
+  }[TType];

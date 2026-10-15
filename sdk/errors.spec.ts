@@ -1,7 +1,8 @@
-import { assertEquals, assertInstanceOf } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertInstanceOf } from "../test/assert.ts";
 import { ErrorCodes, RuntimeError } from "./mod.ts";
 
-Deno.test("RuntimeError preserves code, message, name, and cause", () => {
+test("RuntimeError preserves code, message, name, and cause", () => {
   const cause = new Error("source");
   const error = new RuntimeError("VALIDATION_ERROR", "Invalid payload", {
     cause,
@@ -14,7 +15,7 @@ Deno.test("RuntimeError preserves code, message, name, and cause", () => {
   assertEquals(error.cause, cause);
 });
 
-Deno.test("ErrorCodes exposes stable public SDK error code constants", () => {
+test("ErrorCodes exposes stable public SDK error code constants", () => {
   assertEquals(ErrorCodes.FORBIDDEN, "FORBIDDEN");
   assertEquals(ErrorCodes.NOT_FOUND, "NOT_FOUND");
   assertEquals(ErrorCodes.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED");
