@@ -118,7 +118,7 @@ __metadata:
     "@biomejs/biome": "npm:^2.5.15"
     "@edge-connector/sdk": "workspace:*"
     "@hono/node-server": "npm:^2.1.5"
-    "@tauri-apps/api": "npm:2.12.2"
+    "@tauri-apps/api": "npm:2.12.3"
     "@tauri-apps/cli": "npm:2.12.2"
     "@tauri-apps/plugin-dialog": "npm:^2.8.2"
     "@types/node": "npm:26.6.5"
@@ -409,14 +409,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/api@npm:2.12.2":
-  version: 2.12.2
-  resolution: "@tauri-apps/api@npm:2.12.2"
-  checksum: 10c0/1224b861d15312e11bce75f7813fd22f5afb2f0390030c67d4a99eeb119585a17af8951f4940a38d1053cff0462ff8b3848711016d837ae4d0387b3a543ee865
-  languageName: node
-  linkType: hard
-
-"@tauri-apps/api@npm:^2.12.0":
+"@tauri-apps/api@npm:2.12.3, @tauri-apps/api@npm:^2.12.0":
   version: 2.12.3
   resolution: "@tauri-apps/api@npm:2.12.3"
   checksum: 10c0/80a2fc50e39960ac0270940f73b9ba81b8bc3c1518355cdd54490d2d906f8da18da9b46d8b31b9b1cfda874c65272a56a1b536ceba0b965cc3a1e547423e82c9
