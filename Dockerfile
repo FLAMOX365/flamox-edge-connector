@@ -1,4 +1,4 @@
-FROM node:26.12.0-bookworm-slim@sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913 AS build
+FROM node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9 AS build
 
 WORKDIR /app
 RUN npm install --global corepack@0.36.0 && corepack enable
@@ -17,7 +17,7 @@ COPY tools/ ./tools/
 COPY test/ ./test/
 RUN yarn build && yarn workspaces focus --all --production
 
-FROM node:26.12.0-bookworm-slim@sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913
+FROM node:26.13.0-bookworm-slim@sha256:bc0a2afd3b74ce12222fc8bab99271e66257f021078f5f4a5d687a77d280c1d9
 LABEL org.opencontainers.image.source="https://github.com/FLAMOX365/flamox-edge-connector" \
       org.opencontainers.image.description="Edge Connector runtime" \
       org.opencontainers.image.licenses="MIT"
