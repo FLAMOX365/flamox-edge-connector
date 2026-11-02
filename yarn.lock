@@ -5,9 +5,9 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
-"@anthropic-ai/sandbox-runtime@npm:0.0.79":
-  version: 0.0.79
-  resolution: "@anthropic-ai/sandbox-runtime@npm:0.0.79"
+"@anthropic-ai/sandbox-runtime@npm:0.0.81":
+  version: 0.0.81
+  resolution: "@anthropic-ai/sandbox-runtime@npm:0.0.81"
   dependencies:
     "@pondwader/socks5-server": "npm:^1.0.10"
     commander: "npm:^12.1.0"
@@ -15,23 +15,29 @@ __metadata:
     zod: "npm:^3.25.0"
   bin:
     srt: dist/cli.js
-  checksum: 10c0/bd5c50e1aa351c7bd322856104d78e5091d8d83c823b59cf2a1543e2fbe74f48806992d47d799fd65ed221bbdd06979c75236585a303d4c5795de74145eb4897
+  checksum: 10c0/08719d1e6dae61f4bdab2229378a7b82df84369a3ca478d7d147f52f3979112484980d9b3a32bb37157a51aaa63a5c9ee5a25cc448fc7d1f89eb66cfb0e2bfb4
   languageName: node
   linkType: hard
 
-"@biomejs/biome@npm:^2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/biome@npm:2.5.15"
+"@biomejs/biome@npm:^2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/biome@npm:2.6.4"
   dependencies:
-    "@biomejs/cli-darwin-arm64": "npm:2.5.15"
-    "@biomejs/cli-darwin-x64": "npm:2.5.15"
-    "@biomejs/cli-linux-arm64": "npm:2.5.15"
-    "@biomejs/cli-linux-arm64-musl": "npm:2.5.15"
-    "@biomejs/cli-linux-x64": "npm:2.5.15"
-    "@biomejs/cli-linux-x64-musl": "npm:2.5.15"
-    "@biomejs/cli-win32-arm64": "npm:2.5.15"
-    "@biomejs/cli-win32-x64": "npm:2.5.15"
+    "@biomejs/cli-android-arm64": "npm:2.6.4"
+    "@biomejs/cli-android-x64": "npm:2.6.4"
+    "@biomejs/cli-darwin-arm64": "npm:2.6.4"
+    "@biomejs/cli-darwin-x64": "npm:2.6.4"
+    "@biomejs/cli-linux-arm64": "npm:2.6.4"
+    "@biomejs/cli-linux-arm64-musl": "npm:2.6.4"
+    "@biomejs/cli-linux-x64": "npm:2.6.4"
+    "@biomejs/cli-linux-x64-musl": "npm:2.6.4"
+    "@biomejs/cli-win32-arm64": "npm:2.6.4"
+    "@biomejs/cli-win32-x64": "npm:2.6.4"
   dependenciesMeta:
+    "@biomejs/cli-android-arm64":
+      optional: true
+    "@biomejs/cli-android-x64":
+      optional: true
     "@biomejs/cli-darwin-arm64":
       optional: true
     "@biomejs/cli-darwin-x64":
@@ -50,62 +56,76 @@ __metadata:
       optional: true
   bin:
     biome: bin/biome
-  checksum: 10c0/8c8f270eb8f11801968d064c5924cce2e0bc3f54317181486cfb9a0818048c4655bd7cbe59275633a9fe4fc92160a4fdb62fb603d80df0eebc2b6b67e52c675b
+  checksum: 10c0/72f6d58859628b06db4f53930dde1f443f8c3752f9dc597b32da61f1f467f3df128eb51f5272e46b5113e12b3390902e116d5e536afbe8a9fcb24dc86782fe63
   languageName: node
   linkType: hard
 
-"@biomejs/cli-darwin-arm64@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-darwin-arm64@npm:2.5.15"
+"@biomejs/cli-android-arm64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-android-arm64@npm:2.6.4"
+  conditions: os=android & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@biomejs/cli-android-x64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-android-x64@npm:2.6.4"
+  conditions: os=android & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@biomejs/cli-darwin-arm64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-darwin-arm64@npm:2.6.4"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@biomejs/cli-darwin-x64@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-darwin-x64@npm:2.5.15"
+"@biomejs/cli-darwin-x64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-darwin-x64@npm:2.6.4"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-arm64-musl@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-linux-arm64-musl@npm:2.5.15"
+"@biomejs/cli-linux-arm64-musl@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-linux-arm64-musl@npm:2.6.4"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-arm64@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-linux-arm64@npm:2.5.15"
+"@biomejs/cli-linux-arm64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-linux-arm64@npm:2.6.4"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-x64-musl@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-linux-x64-musl@npm:2.5.15"
+"@biomejs/cli-linux-x64-musl@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-linux-x64-musl@npm:2.6.4"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-x64@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-linux-x64@npm:2.5.15"
+"@biomejs/cli-linux-x64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-linux-x64@npm:2.6.4"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@biomejs/cli-win32-arm64@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-win32-arm64@npm:2.5.15"
+"@biomejs/cli-win32-arm64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-win32-arm64@npm:2.6.4"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@biomejs/cli-win32-x64@npm:2.5.15":
-  version: 2.5.15
-  resolution: "@biomejs/cli-win32-x64@npm:2.5.15"
+"@biomejs/cli-win32-x64@npm:2.6.4":
+  version: 2.6.4
+  resolution: "@biomejs/cli-win32-x64@npm:2.6.4"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -114,23 +134,23 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@edge-connector/host@workspace:."
   dependencies:
-    "@anthropic-ai/sandbox-runtime": "npm:0.0.79"
-    "@biomejs/biome": "npm:^2.5.15"
+    "@anthropic-ai/sandbox-runtime": "npm:0.0.81"
+    "@biomejs/biome": "npm:^2.6.4"
     "@edge-connector/sdk": "workspace:*"
     "@hono/node-server": "npm:^2.1.5"
     "@tauri-apps/api": "npm:2.12.4"
-    "@tauri-apps/cli": "npm:2.12.3"
-    "@tauri-apps/plugin-dialog": "npm:^2.8.3"
-    "@types/node": "npm:26.6.5"
+    "@tauri-apps/cli": "npm:2.12.4"
+    "@tauri-apps/plugin-dialog": "npm:^2.8.4"
+    "@types/node": "npm:26.6.6"
     "@types/proper-lockfile": "npm:^4.1.4"
     "@types/ws": "npm:^8.18.2"
     ajv: "npm:8.20.0"
     esbuild: "npm:0.28.2"
-    hono: "npm:^4.13.13"
+    hono: "npm:^4.13.14"
     proper-lockfile: "npm:^4.1.2"
     tsx: "npm:^4.23.15"
     typescript: "npm:7.0.2"
-    undici: "npm:^8.12.1"
+    undici: "npm:^8.12.3"
     ws: "npm:^8.22.0"
     yaml: "npm:^2.9.1"
   bin:
@@ -152,7 +172,7 @@ __metadata:
   resolution: "@edge-examples/ad-user-export@workspace:templates/examples/ad-user-export"
   dependencies:
     "@edge-connector/sdk": "workspace:*"
-    "@types/node": "npm:26.6.5"
+    "@types/node": "npm:26.6.6"
     tsx: "npm:4.23.15"
     typescript: "npm:7.0.2"
   languageName: unknown
@@ -163,7 +183,7 @@ __metadata:
   resolution: "@edge-examples/erp-integration@workspace:templates/examples/erp-integration"
   dependencies:
     "@edge-connector/sdk": "workspace:*"
-    "@types/node": "npm:26.6.5"
+    "@types/node": "npm:26.6.6"
     tsx: "npm:4.23.15"
     typescript: "npm:7.0.2"
   languageName: unknown
@@ -174,7 +194,7 @@ __metadata:
   resolution: "@edge-examples/extension@workspace:templates/extension"
   dependencies:
     "@edge-connector/sdk": "workspace:*"
-    "@types/node": "npm:26.6.5"
+    "@types/node": "npm:26.6.6"
     tsx: "npm:4.23.15"
     typescript: "npm:7.0.2"
   languageName: unknown
@@ -185,7 +205,7 @@ __metadata:
   resolution: "@edge-examples/starter@workspace:templates/starter"
   dependencies:
     "@edge-connector/sdk": "workspace:*"
-    "@types/node": "npm:26.6.5"
+    "@types/node": "npm:26.6.6"
     tsx: "npm:4.23.15"
     typescript: "npm:7.0.2"
   languageName: unknown
@@ -196,7 +216,7 @@ __metadata:
   resolution: "@edge-examples/ticketing-yaml@workspace:templates/examples/ticketing-yaml"
   dependencies:
     "@edge-connector/sdk": "workspace:*"
-    "@types/node": "npm:26.6.5"
+    "@types/node": "npm:26.6.6"
     tsx: "npm:4.23.15"
     typescript: "npm:7.0.2"
   languageName: unknown
@@ -416,98 +436,98 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-darwin-arm64@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-darwin-arm64@npm:2.12.3"
+"@tauri-apps/cli-darwin-arm64@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-darwin-arm64@npm:2.12.4"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-darwin-x64@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-darwin-x64@npm:2.12.3"
+"@tauri-apps/cli-darwin-x64@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-darwin-x64@npm:2.12.4"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-linux-arm-gnueabihf@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-linux-arm-gnueabihf@npm:2.12.3"
+"@tauri-apps/cli-linux-arm-gnueabihf@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-linux-arm-gnueabihf@npm:2.12.4"
   conditions: os=linux & cpu=arm
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-linux-arm64-gnu@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-linux-arm64-gnu@npm:2.12.3"
+"@tauri-apps/cli-linux-arm64-gnu@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-linux-arm64-gnu@npm:2.12.4"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-linux-arm64-musl@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-linux-arm64-musl@npm:2.12.3"
+"@tauri-apps/cli-linux-arm64-musl@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-linux-arm64-musl@npm:2.12.4"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-linux-riscv64-gnu@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-linux-riscv64-gnu@npm:2.12.3"
+"@tauri-apps/cli-linux-riscv64-gnu@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-linux-riscv64-gnu@npm:2.12.4"
   conditions: os=linux & cpu=riscv64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-linux-x64-gnu@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-linux-x64-gnu@npm:2.12.3"
+"@tauri-apps/cli-linux-x64-gnu@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-linux-x64-gnu@npm:2.12.4"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-linux-x64-musl@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-linux-x64-musl@npm:2.12.3"
+"@tauri-apps/cli-linux-x64-musl@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-linux-x64-musl@npm:2.12.4"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-win32-arm64-msvc@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-win32-arm64-msvc@npm:2.12.3"
+"@tauri-apps/cli-win32-arm64-msvc@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-win32-arm64-msvc@npm:2.12.4"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-win32-ia32-msvc@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-win32-ia32-msvc@npm:2.12.3"
+"@tauri-apps/cli-win32-ia32-msvc@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-win32-ia32-msvc@npm:2.12.4"
   conditions: os=win32 & cpu=ia32
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli-win32-x64-msvc@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli-win32-x64-msvc@npm:2.12.3"
+"@tauri-apps/cli-win32-x64-msvc@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli-win32-x64-msvc@npm:2.12.4"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"@tauri-apps/cli@npm:2.12.3":
-  version: 2.12.3
-  resolution: "@tauri-apps/cli@npm:2.12.3"
+"@tauri-apps/cli@npm:2.12.4":
+  version: 2.12.4
+  resolution: "@tauri-apps/cli@npm:2.12.4"
   dependencies:
-    "@tauri-apps/cli-darwin-arm64": "npm:2.12.3"
-    "@tauri-apps/cli-darwin-x64": "npm:2.12.3"
-    "@tauri-apps/cli-linux-arm-gnueabihf": "npm:2.12.3"
-    "@tauri-apps/cli-linux-arm64-gnu": "npm:2.12.3"
-    "@tauri-apps/cli-linux-arm64-musl": "npm:2.12.3"
-    "@tauri-apps/cli-linux-riscv64-gnu": "npm:2.12.3"
-    "@tauri-apps/cli-linux-x64-gnu": "npm:2.12.3"
-    "@tauri-apps/cli-linux-x64-musl": "npm:2.12.3"
-    "@tauri-apps/cli-win32-arm64-msvc": "npm:2.12.3"
-    "@tauri-apps/cli-win32-ia32-msvc": "npm:2.12.3"
-    "@tauri-apps/cli-win32-x64-msvc": "npm:2.12.3"
+    "@tauri-apps/cli-darwin-arm64": "npm:2.12.4"
+    "@tauri-apps/cli-darwin-x64": "npm:2.12.4"
+    "@tauri-apps/cli-linux-arm-gnueabihf": "npm:2.12.4"
+    "@tauri-apps/cli-linux-arm64-gnu": "npm:2.12.4"
+    "@tauri-apps/cli-linux-arm64-musl": "npm:2.12.4"
+    "@tauri-apps/cli-linux-riscv64-gnu": "npm:2.12.4"
+    "@tauri-apps/cli-linux-x64-gnu": "npm:2.12.4"
+    "@tauri-apps/cli-linux-x64-musl": "npm:2.12.4"
+    "@tauri-apps/cli-win32-arm64-msvc": "npm:2.12.4"
+    "@tauri-apps/cli-win32-ia32-msvc": "npm:2.12.4"
+    "@tauri-apps/cli-win32-x64-msvc": "npm:2.12.4"
   dependenciesMeta:
     "@tauri-apps/cli-darwin-arm64":
       optional: true
@@ -533,25 +553,34 @@ __metadata:
       optional: true
   bin:
     tauri: tauri.js
-  checksum: 10c0/6ed22f8613317326c6f7c4e85218995ec0d0ff19bff6accb426a88367503ad2a007793567f6bec116a8620609d86c6270a566ccc6f3aa1a9442285b2037eddfe
+  checksum: 10c0/e1043cb0b0ab15ce24d1835bd3fc929ed1479d64d784459153d249ffa34a83c9020c4699520950373830112614bc8b71d9257e7db773481e73f73a8b97b69c45
   languageName: node
   linkType: hard
 
-"@tauri-apps/plugin-dialog@npm:^2.8.3":
-  version: 2.8.3
-  resolution: "@tauri-apps/plugin-dialog@npm:2.8.3"
+"@tauri-apps/plugin-dialog@npm:^2.8.4":
+  version: 2.8.4
+  resolution: "@tauri-apps/plugin-dialog@npm:2.8.4"
   dependencies:
     "@tauri-apps/api": "npm:^2.12.0"
-  checksum: 10c0/b527bd260841b56df32b707867c537e0035508bc58d71c5cd2183c56f687378d140b90190bb9e2eb9d9d658af43a34d7a52b381ae7bd02eb3d64e301cdd1e107
+  checksum: 10c0/45210576621c0d0c592cd1e0d00b045f267ff5bd5f3263816f069f3ba78d8851efb36b71990180a5b6d0baf92e70df96e5af474a1c02552244cd7f1891de3bd3
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:26.6.5":
+"@types/node@npm:*":
   version: 26.6.5
   resolution: "@types/node@npm:26.6.5"
   dependencies:
     undici-types: "npm:~8.9.0"
   checksum: 10c0/4f791f69466ace7842c09e7bef96cb1ddbb65cf3db916ef7e84f0e2b2a17220b6b816dc7539d01520cadfb17ed7169b8214910900493e0a83be8bc7d124ec20a
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:26.6.6":
+  version: 26.6.6
+  resolution: "@types/node@npm:26.6.6"
+  dependencies:
+    undici-types: "npm:~8.9.0"
+  checksum: 10c0/5cb63f644f6e85a257a9cd2403cbcbe196760e2a35fd3ec9fb8b5cff663e14cc832b198cc17b53f870a2e30900ed45a1fb3f53e6589aba26b8e8c484aa672053
   languageName: node
   linkType: hard
 
@@ -908,10 +937,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hono@npm:^4.13.13":
-  version: 4.13.13
-  resolution: "hono@npm:4.13.13"
-  checksum: 10c0/c8524e685a59b4f23a9bea15385eeac5622218949db251cb871b20fd9ef673b751b44ccdee6c22b3df56e5ed4c1b1cebad17b518bdc1823039da39b53ef9c1cf
+"hono@npm:^4.13.14":
+  version: 4.13.14
+  resolution: "hono@npm:4.13.14"
+  checksum: 10c0/fdedcb49186e3a5eb0fff39c4fd66112718dc1a98c6df9a385f2fc4799c0e59140e3c45fbac12929d658b659d9eb9ddb9ac09161104336023c23f335668c93fd
   languageName: node
   linkType: hard
 
@@ -1249,7 +1278,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^8.12.1, undici@npm:^8.4.1":
+"undici@npm:^8.12.3":
+  version: 8.12.3
+  resolution: "undici@npm:8.12.3"
+  checksum: 10c0/714919e62b4160eea195fb35c7f5c4907235741e47bfde8a014ac58f6d24df13434e23400d7f48e2c455fd2b259d27f07fce514f04a5b4e99936ba62cbc4bb71
+  languageName: node
+  linkType: hard
+
+"undici@npm:^8.4.1":
   version: 8.12.1
   resolution: "undici@npm:8.12.1"
   checksum: 10c0/8ba448a30f85ec9bffe0065b45b471a578dbb56eafd4162741fd7be3b955672e98fabd7a4ab0703365d5ffc6f1927f4ed1c1221f678aa67af18fb7bc3dfe283b
