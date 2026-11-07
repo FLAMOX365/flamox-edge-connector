@@ -1,6 +1,6 @@
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
@@ -36,6 +36,8 @@ async function fixture(t: TestContext) {
   const requests: { path: string; body: Record<string, JsonValue> }[] = [];
   const commands: ConnectorCommand[] = [];
   const failures = new Set<string>();
+  const heldHeartbeats: ServerResponse[] = [];
+  let holdHeartbeats = false;
   const server = createServer(async (request, response) => {
     assert.equal(
       request.headers.authorization,
@@ -55,6 +57,10 @@ async function fixture(t: TestContext) {
       return;
     }
     response.setHeader("content-type", "application/json");
+    if (path.endsWith("/heartbeat") && holdHeartbeats) {
+      heldHeartbeats.push(response);
+      return;
+    }
     if (path.endsWith("/desired"))
       response.end(
         JSON.stringify({
@@ -103,7 +109,7 @@ async function fixture(t: TestContext) {
       return { accepted: true };
     },
   } as unknown as ExtensionManager;
-  let reconciliation: ReconciliationResult = {
+  let reconciliation: ReconciliationResult | Promise<ReconciliationResult> = {
     complete: true,
     observations: [],
   };
@@ -143,9 +149,19 @@ async function fixture(t: TestContext) {
     failures,
     executions,
     notifications,
+    client,
     agent,
     command,
-    setReconciliation(value: ReconciliationResult) {
+    holdHeartbeats() {
+      holdHeartbeats = true;
+    },
+    releaseHeartbeats() {
+      holdHeartbeats = false;
+      for (const response of heldHeartbeats.splice(0)) response.end("{}");
+    },
+    setReconciliation(
+      value: ReconciliationResult | Promise<ReconciliationResult>,
+    ) {
       reconciliation = value;
     },
   };
@@ -182,6 +198,67 @@ test("control sync reports successful, expired and denied commands and resumes p
   await f.agent().runOnce();
   assert.deepEqual(f.executions, ["command-1", "command-3"]);
 });
+
+test("heartbeats remain independent of blocked reconciliation, never overlap and stop on abort", async (t) => {
+  const f = await fixture(t);
+  const reconciliation = Promise.withResolvers<ReconciliationResult>();
+  f.setReconciliation(reconciliation.promise);
+  f.holdHeartbeats();
+  const controller = new AbortController();
+  let completed = 0;
+  const heartbeat = f.client.heartbeat.bind(f.client);
+  t.mock.method(f.client, "heartbeat", async (signal: AbortSignal) => {
+    await heartbeat(signal);
+    completed++;
+  });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const running = f.agent().run(controller.signal);
+  t.after(async () => {
+    controller.abort();
+    f.releaseHeartbeats();
+    reconciliation.resolve({ complete: true, observations: [] });
+    await running;
+  });
+  const count = () =>
+    f.requests.filter((request) => request.path.endsWith("/heartbeat")).length;
+  await waitFor(() => count() === 1);
+  t.mock.timers.tick(90_000);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(
+    count(),
+    1,
+    "a pending heartbeat must not overlap another request",
+  );
+  assert.equal(
+    f.requests.some((request) => request.path.endsWith("/observed")),
+    false,
+  );
+
+  f.releaseHeartbeats();
+  await waitFor(() => completed === 1);
+  t.mock.timers.tick(30_000);
+  await waitFor(() => completed === 2);
+  assert.equal(
+    count(),
+    2,
+    "heartbeats continue while reconciliation is still blocked",
+  );
+
+  controller.abort();
+  reconciliation.resolve({ complete: true, observations: [] });
+  await running;
+  t.mock.timers.tick(300_000);
+  assert.equal(count(), 2);
+});
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = performance.now() + 5_000;
+  while (!predicate()) {
+    if (performance.now() >= deadline)
+      throw new Error("Timed out waiting for the control-plane fixture.");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
 
 test("control sync retains the revision and audit outbox when observed-state delivery fails", async (t) => {
   const f = await fixture(t);

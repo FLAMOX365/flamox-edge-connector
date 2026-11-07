@@ -17,6 +17,27 @@ Authorization: EdgeConnector <connector-id>.<machine-secret>
 The server hashes the machine secret and binds the connector record, public RSA
 key and credential to one tenant. Revocation invalidates the credential.
 
+## Independent liveness
+
+`POST edge/connectors/control/heartbeat` uses the same machine authorization and
+has no request payload. The response is `200` with `{ "accepted": true }`.
+The agent sends one request at a time, waits 30 seconds after each completed
+attempt and continues independently of slow reconciliation or commands. Each
+request has a 30-second deadline and is aborted on runtime shutdown. This does
+not change the default five-second business polling interval or the independent
+legacy WebSocket heartbeat.
+
+FLAMOX365 records its own reception time, not a client timestamp. Every 30
+seconds the shared server scheduler expires at most 500 eligible online records
+whose last accepted contact is at least five minutes old; an untouched pairing
+uses its pairing time instead. Expiry rechecks the full predicate atomically,
+marks the record offline and retains identity, configuration and revisions. A
+valid heartbeat can recover offline state, but cannot revive a revoked identity
+or clear an unrelated error state. Accepted observations and audit uploads also
+continue to update contact time. Portal changes use the tenant-scoped,
+payload-free `edge:connectors-changed` invalidation and the existing SSE channel;
+there is no browser polling or automatic outage email.
+
 ## Pairing
 
 ```text

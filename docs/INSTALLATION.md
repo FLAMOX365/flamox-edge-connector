@@ -28,10 +28,10 @@ compiler. For a source service: `yarn install --immutable`, `yarn build`, then
 native type stripping is used only for erasable build-tool scripts; operator
 Functions use an ESM loader with esbuild to retain enums and parameter properties.
 
-| Host | Required isolation support |
-| --- | --- |
-| macOS | Built-in `sandbox-exec`; Xcode command-line tools for linked-library discovery. The desktop sidecar uses the official standalone Node archive. |
-| Linux | `bubblewrap`, `socat`, and working unprivileged user/PID/network namespaces. AppArmor must permit those operations for the sandbox binaries. |
+| Host    | Required isolation support                                                                                                                        |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS   | Built-in `sandbox-exec`; Xcode command-line tools for linked-library discovery. The desktop sidecar uses the official standalone Node archive.    |
+| Linux   | `bubblewrap`, `socat`, and working unprivileged user/PID/network namespaces. AppArmor must permit those operations for the sandbox binaries.      |
 | Windows | One elevated `yarn exec srt windows-install` from the installed checkout provisions the sandbox account and WFP fence. Upstream support is alpha. |
 
 Do not run the Windows provisioning command on every service start: it changes
@@ -128,12 +128,13 @@ yarn extensions rollback extension.id
 yarn extensions uninstall extension.id
 ```
 
-These commands target `LOCAL` installations. The current host also checks the
-managed policy before the local overlay; without a managed rule, even an
-otherwise locally authorized offline installation is rejected. This existing
-limitation is tracked in [CR-0549](https://github.com/RueDeRennes/flamox/issues/653). FLAMOX365 Desired State manages
-only `MANAGED` installations and cannot take over a local extension with the
-same id.
+These commands target `LOCAL` installations. With no management URL configured,
+the explicit local allow policy authorizes them; a missing policy denies them.
+With a management URL configured, managed authorization remains mandatory and a
+local policy is an additional restriction. A connection failure never enables an
+offline fallback. Publisher trust, signatures, exact grants and the OS sandbox
+remain mandatory in both modes. FLAMOX365 Desired State manages only `MANAGED`
+installations and cannot take over a local extension with the same id.
 
 ## Backup and update
 

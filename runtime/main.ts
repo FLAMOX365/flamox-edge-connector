@@ -103,7 +103,10 @@ export async function createManagedExtensionRuntime(
       ? await readTrustedPublishersFile(config.trustedPublishersFile)
       : [],
   );
-  const policy = new ManagedExtensionPolicy(localPolicy);
+  const policy = new ManagedExtensionPolicy(
+    localPolicy,
+    Boolean(config.managementUrl),
+  );
   const secrets = new ManagedExtensionSecretProvider(
     new EnvironmentExtensionSecretProvider(),
   );

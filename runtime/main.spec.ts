@@ -11,12 +11,14 @@ import type {
 import { createLogger } from "./logger.ts";
 import {
   createHandler,
+  createManagedExtensionRuntime,
   createProtocolExecutor,
   createRuntimeBundle,
 } from "./main.ts";
 import type { WritableFrame } from "./protocol.ts";
 import { RuntimeError } from "./runtime-error.ts";
 import { createRuntimeStatus } from "./runtime-status.ts";
+import { parseExtensionManifest } from "./extension-manifest.ts";
 
 const requestId = "00000000-0000-0000-0000-000000000001";
 const silentLogger = createLogger("error", {
@@ -266,5 +268,73 @@ function createPassthroughRuntime(): ConnectorRuntime {
       execute: () => Promise.resolve({ statusCode: 204 }),
     } as unknown as ProtocolExecutor,
     logger: silentLogger,
+  });
+}
+
+for (const managed of [false, true]) {
+  test(`runtime composes ${managed ? "managed" : "local"} authorization from the configured management URL`, async (t) => {
+    const directory = await makeTempDirectory();
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    const manifest = parseExtensionManifest({
+      schemaVersion: 2,
+      id: "local-fixture",
+      displayName: "Local fixture",
+      description: "Checks explicit local authorization.",
+      publisher: "FLAMOX365",
+      version: "1.0.0",
+      runtime: { kind: "node-process", entrypoint: "extension.ts" },
+      capabilities: [],
+      permissions: { network: [], secrets: [] },
+      actions: [{ name: "inspect", idempotent: true, timeoutSeconds: 5 }],
+    });
+    const policyFile = `${directory}/policy.json`;
+    await fs.writeFile(
+      policyFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        extensions: [
+          {
+            extensionId: manifest.id,
+            publishers: [manifest.publisher],
+            capabilities: [],
+            network: [],
+            secrets: [],
+          },
+        ],
+      }),
+    );
+    const runtime = await createManagedExtensionRuntime(
+      loadConfig({
+        EDGE_CONNECTOR_DATA_DIRECTORY: directory,
+        EDGE_CONNECTOR_EXTENSION_POLICY_FILE: policyFile,
+        ...(managed
+          ? {
+              EDGE_CONNECTOR_MANAGEMENT_URL:
+                "https://management.example.test/api/v1/",
+            }
+          : {}),
+      }),
+      silentLogger,
+    );
+    t.after(() => runtime.manager.stop());
+
+    if (managed) {
+      assertThrows(
+        () =>
+          runtime.policy.authorize(manifest, {
+            capabilities: [],
+            network: [],
+            secrets: [],
+          }),
+        Error,
+        "does not authorize extension",
+      );
+    } else {
+      runtime.policy.authorize(manifest, {
+        capabilities: [],
+        network: [],
+        secrets: [],
+      });
+    }
   });
 }
