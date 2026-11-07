@@ -79,6 +79,8 @@ export class ExtensionHost {
           ...(process.platform === "win32"
             ? {
                 SystemRoot: process.env.SystemRoot,
+                // The trusted SRT supervisor uses this for its Windows ACL state.
+                LOCALAPPDATA: process.env["LOCALAPPDATA"],
                 TEMP: process.env.TEMP,
                 TMP: process.env.TMP,
               }
