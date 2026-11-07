@@ -34,29 +34,8 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
 
-      - name: Update Dependabot branches and request their exact CI
+      - name: Update Dependabot branches and approve their native PR verification
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: node .github/scripts/rebaseDependabotPullRequests.mjs
-
-  verify-workflow-approval:
-    if: >-
-      ${{ github.repository_id == '1317851991' &&
-          github.event_name == 'workflow_dispatch' &&
-          github.ref == 'refs/heads/codex/dependabot-workflow-approval' &&
-          github.actor == 'RueDeRennes' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      pull-requests: read
-    steps:
-      - name: Approve the verified same-repository Dependabot workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh api repos/FLAMOX365/flamox-edge-connector/pulls/12 --jq 'select(.state == "open" and .user.login == "dependabot[bot]" and .head.repo.id == 1317851991 and .head.sha == "8bc98775f1a0c6b1c9d868b43fe7f24f6f4df3ea") | .number' | grep -x 12
-          gh api repos/FLAMOX365/flamox-edge-connector/actions/runs/42341058283 --jq 'select(.event == "pull_request" and .head_sha == "8bc98775f1a0c6b1c9d868b43fe7f24f6f4df3ea" and .conclusion == "action_required") | .id' | grep -x 42341058283
-          gh api --method POST repos/FLAMOX365/flamox-edge-connector/actions/runs/42341058283/approve

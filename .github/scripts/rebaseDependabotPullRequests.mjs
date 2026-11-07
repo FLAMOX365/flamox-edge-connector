@@ -16,7 +16,8 @@ const requestFailure =
 
 /**
  * Updates same-repository Dependabot branches through GitHub's branch API,
- * then explicitly dispatches CI because GITHUB_TOKEN writes do not start it.
+ * then approves only the matching native PR workflow that GitHub holds for
+ * GITHUB_TOKEN-authored updates. No foreign or human pull request is approved.
  * Partial completion is recoverable by inspecting the current head and its
  * existing CI runs. Human PRs, foreign repositories and changed heads are skipped.
  */
@@ -49,7 +50,7 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
     request,
     `${repositoryPath}/pulls?state=open&base=${encodeURIComponent(identity.defaultBranch)}`,
   );
-  const result = { status: 'completed', mainSha, updated: [], dispatched: [], skipped: [] };
+  const result = { status: 'completed', mainSha, updated: [], approved: [], skipped: [] };
   const seen = new Set();
   const skip = (number, reason) => result.skipped.push({ number, reason });
 
@@ -111,11 +112,21 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
       result.updated.push(number);
     }
 
-    const runs = await request('GET',
-      `${repositoryPath}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(pullRequest.head.ref)}&head_sha=${pullRequest.head.sha}&per_page=100`,
-    );
-    if (!Array.isArray(runs?.workflow_runs)) throw new Error('Invalid CI run metadata.');
-    if (runs.workflow_runs.some((run) => run.head_sha === pullRequest.head.sha)) {
+    // GitHub creates an approval-required PR run after GITHUB_TOKEN updates.
+    // Approving that run preserves its PR association and the required checks.
+    let run;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const runs = await request('GET',
+        `${repositoryPath}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(pullRequest.head.ref)}&head_sha=${pullRequest.head.sha}&event=pull_request&per_page=100`,
+      );
+      if (!Array.isArray(runs?.workflow_runs)) throw new Error('Invalid CI run metadata.');
+      run = runs.workflow_runs.find((candidate) =>
+        eligibleRun(candidate, pullRequest, identity));
+      if (run) break;
+      await sleep(1000);
+    }
+    if (!run) throw new Error('GitHub has not created the native Dependabot PR verification.');
+    if (run.conclusion !== 'action_required') {
       skip(number, 'verification-already-requested');
       continue;
     }
@@ -127,12 +138,35 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
     }
     if (latestMain?.commit?.sha !== mainSha)
       return { ...result, status: 'stopped', reason: 'main-changed' };
-    await request('POST', `${repositoryPath}/actions/workflows/ci.yml/dispatches`, {
-      ref: pullRequest.head.ref,
-    });
-    result.dispatched.push(number);
+    const latestRun = await request('GET', `${repositoryPath}/actions/runs/${run.id}`);
+    if (!eligibleRun(latestRun, latest, identity) ||
+        latestRun.conclusion !== 'action_required') {
+      skip(number, 'verification-changed');
+      continue;
+    }
+    await request('POST', `${repositoryPath}/actions/runs/${run.id}/approve`);
+    result.approved.push(number);
   }
   return result;
+}
+
+function eligibleRun(run, pullRequest, identity) {
+  return (
+    Number.isSafeInteger(run?.id) && run.id > 0 &&
+    run.event === 'pull_request' &&
+    run.name === 'CI' &&
+    typeof run.path === 'string' &&
+    (run.path === '.github/workflows/ci.yml' ||
+     run.path.startsWith('.github/workflows/ci.yml@')) &&
+    run.repository?.id === identity.id &&
+    run.repository?.full_name === identity.fullName &&
+    run.head_repository?.id === identity.id &&
+    run.head_repository?.full_name === identity.fullName &&
+    run.head_sha === pullRequest.head.sha &&
+    run.head_branch === pullRequest.head.ref &&
+    Array.isArray(run.pull_requests) && run.pull_requests.length === 1 &&
+    run.pull_requests[0]?.number === pullRequest.number
+  );
 }
 
 function eligiblePullRequest(value, number, identity) {
