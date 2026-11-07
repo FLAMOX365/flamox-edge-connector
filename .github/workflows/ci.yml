@@ -11,7 +11,8 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  platform:
+    name: Verify on ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,7 +31,10 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
       - name: Install package manager
-        run: npm install --global corepack@0.36.0 && corepack enable
+        run: |
+          # Replace the preinstalled Yarn Classic shims on hosted runners.
+          npm install --global --force corepack@0.36.0
+          corepack enable
       - run: yarn install --immutable
       - name: Linux sandbox and desktop prerequisites
         if: runner.os == 'Linux'
@@ -40,11 +44,22 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Provision Windows sandbox account and WFP rules
         if: runner.os == 'Windows'
-        run: yarn exec srt windows-install
+        shell: pwsh
+        run: |
+          Start-Service -Name seclogon -ErrorAction Stop
+          yarn exec srt windows-install --skip-profile-grant
+      - name: Test Dependabot automation
+        run: node --test .github/scripts/*Dependabot*.spec.mjs
       - run: yarn fmt
       - run: yarn lint
       - run: yarn check
       - run: yarn test:coverage
+        if: runner.os != 'Windows'
+        timeout-minutes: 6
+      - name: Verify Windows sandbox and coverage
+        if: runner.os == 'Windows'
+        timeout-minutes: 22
+        run: yarn node tools/verify-windows-sandbox.ts
       - run: yarn check:templates
       - run: yarn verify:generated
       - name: Test native desktop protocol and lifecycle
@@ -59,3 +74,14 @@ jobs:
       - name: Audit runtime dependencies
         if: always()
         run: yarn audit
+
+  verify:
+    name: Verify
+    if: ${{ always() }}
+    needs: platform
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require all platform checks to pass
+        env:
+          PLATFORM_RESULT: ${{ needs.platform.result }}
+        run: test "$PLATFORM_RESULT" = success

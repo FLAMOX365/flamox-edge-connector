@@ -1,9 +1,10 @@
 import { createInterface } from "node:readline";
 import { writeSync } from "node:fs";
+import type { Readable } from "node:stream";
 import { format } from "node:util";
 import http from "node:http";
 import https from "node:https";
-import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
+import { EnvHttpProxyAgent, request, setGlobalDispatcher } from "undici";
 
 for (const method of ["log", "info", "warn", "error", "debug"] as const)
   console[method] = (...values: unknown[]) => {
@@ -70,12 +71,14 @@ sendMessage = (message) => {
     throw new Error("Extension response exceeds the protocol limit.");
   writeSync(process.platform === "win32" ? 1 : 3, line);
 };
+const input =
+  process.platform === "win32" ? await connectWindowsInput() : process.stdin;
 let bufferedBytes = 0;
-process.stdin.on("data", (chunk: Buffer) => {
+input.on("data", (chunk: Buffer) => {
   bufferedBytes += chunk.length;
   if (bufferedBytes > 16 * 1024 * 1024) process.exit(1);
 });
-const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+const lines = createInterface({ input, crlfDelay: Infinity });
 lines.on("line", (line) => {
   bufferedBytes = 0;
   try {
@@ -85,6 +88,21 @@ lines.on("line", (line) => {
   }
 });
 lines.once("close", () => process.exit(0));
+
+async function connectWindowsInput(): Promise<Readable> {
+  const [, , authority, token] = process.argv;
+  if (!authority || !token)
+    throw new Error("Extension input channel is missing.");
+  const response = await request(`http://${authority}/`, {
+    headers: { authorization: `Bearer ${token}` },
+    bodyTimeout: 0,
+  });
+  if (response.statusCode !== 200) {
+    response.body.destroy();
+    throw new Error("Extension input channel rejected the worker.");
+  }
+  return response.body;
+}
 
 async function handleMessage(message: ExtensionInboundMessage): Promise<void> {
   if (message.type === "init") {

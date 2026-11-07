@@ -202,7 +202,7 @@ export class DesktopConnectorController {
   async stop(): Promise<DesktopState> {
     const host = this.#host;
     if (!host) return this.state();
-    host.stop();
+    await host.stop();
     await host.finished;
     if (this.#host === host) this.#host = undefined;
     return this.state();

@@ -94,7 +94,7 @@ async function fixture(t: TestContext) {
   let manager = newManager();
   await manager.initialize();
   t.after(async () => {
-    manager.stop();
+    await manager.stop();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await fs.rm(directory, { recursive: true, force: true });
@@ -207,7 +207,7 @@ async function fixture(t: TestContext) {
       return manager;
     },
     async restart() {
-      manager.stop();
+      await manager.stop();
       manager = newManager();
       await manager.initialize();
     },

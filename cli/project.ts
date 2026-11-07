@@ -152,7 +152,7 @@ export async function validateProject(
     try {
       await host.start();
     } finally {
-      host.stop();
+      await host.stop();
     }
   } finally {
     await fs.rm(prepared.directory, { recursive: true });
@@ -269,12 +269,7 @@ export async function testProject(directory: string): Promise<void> {
   delete environment.NODE_TEST_CONTEXT;
   const status = await executeCommand(
     process.execPath,
-    [
-      "--import",
-      fileURLToPath(import.meta.resolve("tsx")),
-      "--test",
-      ...testFiles,
-    ],
+    ["--import", import.meta.resolve("tsx"), "--test", ...testFiles],
     { cwd: directory, inherit: true, env: environment },
   );
   if (!status.success) {
@@ -331,7 +326,7 @@ export async function buildProject(
     try {
       await host.start();
     } finally {
-      host.stop();
+      await host.stop();
     }
     await fs.rm(output, { recursive: true }).catch((error) => {
       if (!isNotFound(error)) throw error;
@@ -466,13 +461,24 @@ export async function executeDevelopmentAction(options: {
       options.input ?? null,
     );
   } finally {
-    host.stop();
+    await host.stop();
     await fs.rm(prepared.directory, { recursive: true });
   }
 }
 
 async function installProjectDependencies(directory: string): Promise<void> {
-  const output = await executeCommand("yarn", ["install"], { cwd: directory });
+  // A new project has no lockfile yet, even when its scaffolder runs in CI.
+  const args = ["install", "--no-immutable"];
+  const corepackRoot = process.env["COREPACK_ROOT"];
+  // On Windows the Corepack Yarn shim is a batch file, not an executable.
+  const output =
+    process.platform === "win32" && corepackRoot
+      ? await executeCommand(
+          process.execPath,
+          [join(corepackRoot, "dist", "yarn.js"), ...args],
+          { cwd: directory },
+        )
+      : await executeCommand("yarn", args, { cwd: directory });
   if (!output.success) {
     throw commandError("Dependency installation", output);
   }

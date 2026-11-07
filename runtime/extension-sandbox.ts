@@ -1,9 +1,18 @@
-import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
+import {
+  SandboxManager,
+  VENDORED_SRT_WIN_EXE,
+} from "@anthropic-ai/sandbox-runtime";
 import { spawn, type ChildProcess } from "node:child_process";
-import { realpath, stat } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { once } from "node:events";
+import { realpath } from "node:fs/promises";
+import { createServer, type Server, type ServerResponse } from "node:http";
+import type { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
-import { parse, join } from "node:path";
+import { parse, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { executeCommand } from "./command.ts";
+import { windowsReadRoots } from "./windows-sandbox-roots.ts";
 import type {
   ExtensionInboundMessage,
   ExtensionOutboundMessage,
@@ -18,41 +27,48 @@ type SandboxStart = {
 };
 
 const maximumMessageBytes = 16 * 1024 * 1024;
+const initialDirectory = process.cwd();
 let child: ChildProcess | undefined;
+let input: Writable | undefined;
+let inputServer: Server | undefined;
 let starting: Promise<void> | undefined;
 let stopping = false;
 let protocolFailed = false;
 
-process.on("message", (value: SandboxStart | ExtensionInboundMessage) => {
-  if (value.type === "sandbox-start") {
-    if (starting) return void stop();
-    starting = start(value);
-    void starting.catch(async (error: unknown) => {
-      await send({
-        type: "error",
-        executionId: null,
-        code: "EXTENSION_SANDBOX_UNAVAILABLE",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Extension isolation is unavailable.",
-        errorName: "SandboxError",
+process.on(
+  "message",
+  (
+    value: SandboxStart | ExtensionInboundMessage | { type: "sandbox-stop" },
+  ) => {
+    if (value.type === "sandbox-stop") return void stop();
+    if (value.type === "sandbox-start") {
+      if (starting) return void stop();
+      starting = start(value);
+      void starting.catch(async (error: unknown) => {
+        await send({
+          type: "error",
+          executionId: null,
+          code: "EXTENSION_SANDBOX_UNAVAILABLE",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Extension isolation is unavailable.",
+          errorName: "SandboxError",
+        });
+        await stop();
       });
-      await stop();
-    });
-    return;
-  }
-  void starting?.then(() => {
-    const line = `${JSON.stringify(value)}\n`;
-    if (
-      Buffer.byteLength(line) > maximumMessageBytes ||
-      !child?.stdin?.write(line)
-    ) {
-      // Backpressure is bounded by a single protocol message, never an unbounded queue.
-      if (Buffer.byteLength(line) > maximumMessageBytes) void stop();
+      return;
     }
-  });
-});
+    void starting?.then(
+      () => {
+        const line = `${JSON.stringify(value)}\n`;
+        if (Buffer.byteLength(line) > maximumMessageBytes) return void stop();
+        input?.write(line);
+      },
+      () => undefined,
+    );
+  },
+);
 
 process.once("disconnect", () => void stop());
 process.once("SIGTERM", () => void stop());
@@ -61,22 +77,22 @@ process.once("SIGINT", () => void stop());
 async function start(options: SandboxStart): Promise<void> {
   if (!SandboxManager.isSupportedPlatform())
     throw new Error("This operating system cannot isolate extensions.");
-  const dependencies = await SandboxManager.checkDependenciesAsync();
-  if (dependencies.errors.length)
-    throw new Error(
-      `Extension sandbox prerequisites are missing: ${dependencies.errors.join("; ")}`,
-    );
   const executable = await realpath(process.execPath);
   const worker = await realpath(options.workerPath);
   const directory = await realpath(options.extensionDirectory);
+  const windowsBroker =
+    process.platform === "win32"
+      ? await realpath(VENDORED_SRT_WIN_EXE)
+      : undefined;
+  // The broker's secondary logon probe executes the broker itself from the
+  // current directory as the sandbox account, after the drive masks are set.
+  if (windowsBroker) process.chdir(directory);
   // Only immutable code and public operating-system runtime files are readable.
   // Node's narrower fs permissions are additional protection, not the sandbox.
+  // The Windows sandbox account already has access to the OS runtime.
   const systemPaths =
     process.platform === "win32"
-      ? [
-          join(process.env.SystemRoot ?? "C:\\Windows", "System32"),
-          join(process.env.SystemRoot ?? "C:\\Windows", "WinSxS"),
-        ]
+      ? []
       : process.platform === "darwin"
         ? [
             "/System/Library",
@@ -99,50 +115,69 @@ async function start(options: SandboxStart): Promise<void> {
             "/etc/ld.so.cache",
             "/etc/ssl/certs",
           ];
+  if (windowsBroker) systemPaths.push(windowsBroker);
   if (process.platform === "darwin")
     systemPaths.push(...(await linkedLibraries(executable)));
+  // Linux hides the installation directory. Re-expose only the trusted
+  // seccomp executable that the wrapper needs before launching Node.
+  const seccompPath =
+    process.platform === "linux"
+      ? await realpath(
+          join(
+            dirname(
+              fileURLToPath(
+                import.meta.resolve("@anthropic-ai/sandbox-runtime"),
+              ),
+            ),
+            "..",
+            "vendor",
+            "seccomp",
+            process.arch,
+            "apply-seccomp",
+          ),
+        )
+      : undefined;
+  if (seccompPath) systemPaths.push(seccompPath);
   const readRoots =
     process.platform === "win32"
-      ? (
-          await Promise.all(
-            Array.from({ length: 26 }, async (_, index) => {
-              const root = `${String.fromCharCode(65 + index)}:\\`;
-              try {
-                await stat(root);
-                return root;
-              } catch {
-                return undefined;
-              }
-            }),
-          )
-        ).filter((path): path is string => path !== undefined)
+      ? await windowsReadRoots(directory)
       : [parse(directory).root];
-  if (!readRoots.includes(parse(directory).root))
-    readRoots.push(parse(directory).root);
+  const filesystem = {
+    denyRead: readRoots.map((path) => ({ path, literal: true as const })),
+    allowRead: [directory, worker, executable, ...systemPaths].map((path) => ({
+      path,
+      literal: true as const,
+    })),
+    allowWrite: [],
+    // SRT's interactive-shell defaults include a shared temporary directory.
+    // Extension code has no writable filesystem; do not inherit that grant.
+    denyWrite:
+      process.platform === "win32"
+        ? []
+        : ["/tmp/claude", "/private/tmp/claude"].map((path) => ({
+            path,
+            literal: true as const,
+          })),
+  };
+  const windowsInput = windowsBroker
+    ? await listenForWindowsInput()
+    : undefined;
   await SandboxManager.initialize(
     {
       network: {
-        allowedDomains: [...options.network],
+        allowedDomains: [
+          ...options.network,
+          ...(windowsInput ? [windowsInput.authority] : []),
+        ],
         deniedDomains: [],
         allowLocalBinding: false,
         allowUnixSockets: [],
       },
-      filesystem: {
-        denyRead: readRoots.map((path) => ({ path, literal: true })),
-        allowRead: [directory, worker, executable, ...systemPaths].map(
-          (path) => ({ path, literal: true }),
-        ),
-        allowWrite: [],
-        // SRT's interactive-shell defaults include a shared temporary directory.
-        // Extension code has no writable filesystem; do not inherit that grant.
-        denyWrite:
-          process.platform === "win32"
-            ? []
-            : ["/tmp/claude", "/private/tmp/claude"].map((path) => ({
-                path,
-                literal: true,
-              })),
-      },
+      filesystem,
+      ...(seccompPath ? { seccomp: { applyPath: seccompPath } } : {}),
+      ...(windowsBroker
+        ? { windows: { srtWin: { path: windowsBroker } } }
+        : {}),
       enableWeakerNestedSandbox: false,
       enableWeakerNetworkIsolation: false,
       allowAppleEvents: false,
@@ -151,21 +186,54 @@ async function start(options: SandboxStart): Promise<void> {
   );
   if (!SandboxManager.isSandboxingEnabled())
     throw new Error("Extension sandbox enforcement is disabled.");
-  const args = [
-    executable,
+  if (
+    process.platform === "win32" &&
+    SandboxManager.getWindowsProfileRead() !== "absent"
+  ) {
+    throw new Error(
+      "The Windows extension sandbox requires profile access to be disabled.",
+    );
+  }
+  const workerArgs = [
     "--permission",
     `--allow-fs-read=${directory}`,
     `--allow-fs-read=${worker}`,
     "--allow-net",
     "--use-env-proxy",
+    // The supervisor resolves the worker path before isolation. Node's
+    // JavaScript realpath would lstat each ancestor, including denied drives.
+    ...(windowsBroker
+      ? ["--preserve-symlinks-main", "--preserve-symlinks"]
+      : []),
     "--max-old-space-size=128",
     worker,
+    ...(windowsInput ? [windowsInput.authority, windowsInput.token] : []),
   ];
-  const command = `${process.platform === "win32" ? "& " : ""}${args.map(quoteArgument).join(" ")}`;
+  // SRT appends the command text as the final argument to a custom shell.
+  // On Windows launch the worker directly, with that final argument unused.
+  const command = windowsBroker
+    ? ""
+    : [executable, ...workerArgs].map(quoteArgument).join(" ");
+  // The read mask can cover /tmp after the wrapper's initial bind mounts.
+  // Restore only the two sockets for this extension's authenticated proxy.
+  const proxySockets = [
+    SandboxManager.getLinuxHttpSocketPath(),
+    SandboxManager.getLinuxSocksSocketPath(),
+  ].filter((path) => path !== undefined);
   const wrapped = await SandboxManager.wrapWithSandboxArgv(
     command,
-    process.platform === "win32" ? "powershell" : undefined,
-    undefined,
+    windowsBroker ? { exe: executable, args: workerArgs } : undefined,
+    proxySockets.length > 0
+      ? {
+          filesystem: {
+            ...filesystem,
+            allowRead: [
+              ...filesystem.allowRead,
+              ...proxySockets.map((path) => ({ path, literal: true as const })),
+            ],
+          },
+        }
+      : undefined,
     undefined,
     directory,
   );
@@ -179,7 +247,7 @@ async function start(options: SandboxStart): Promise<void> {
     env: wrapped.env,
     stdio:
       process.platform === "win32"
-        ? ["pipe", "pipe", "pipe"]
+        ? ["ignore", "pipe", "pipe"]
         : ["pipe", "ignore", "pipe", "pipe"],
   });
   const protocol = process.platform === "win32" ? child.stdout : child.stdio[3];
@@ -208,6 +276,53 @@ async function start(options: SandboxStart): Promise<void> {
   child.stderr?.resume();
   child.once("error", () => void stop());
   child.once("exit", () => void stop());
+  input = windowsInput
+    ? await windowsInput.response
+    : (child.stdin ?? undefined);
+  input?.once("error", () => void stop());
+}
+
+async function listenForWindowsInput(): Promise<{
+  authority: string;
+  token: string;
+  response: Promise<ServerResponse>;
+}> {
+  // The native Windows broker consumes stdin to launch its runner and does
+  // not pass the caller's input through. Use a one-time loopback response via
+  // this extension's own WFP-filtered proxy. The listener never serves content
+  // to unauthenticated requests and stops accepting after the worker connects.
+  const token = randomBytes(32).toString("hex");
+  const { promise: response, resolve } =
+    Promise.withResolvers<ServerResponse>();
+  let connected = false;
+  const server = createServer({ maxHeaderSize: 4096 }, (request, reply) => {
+    if (
+      connected ||
+      request.method !== "GET" ||
+      request.url !== "/" ||
+      request.headers.authorization !== `Bearer ${token}`
+    ) {
+      reply.writeHead(403, { connection: "close" }).end();
+      return;
+    }
+    connected = true;
+    server.close();
+    reply.writeHead(200, {
+      "content-type": "application/x-ndjson",
+      "cache-control": "no-store",
+    });
+    reply.flushHeaders();
+    reply.once("close", () => void stop());
+    resolve(reply);
+  });
+  inputServer = server;
+  const listening = once(server, "listening");
+  server.listen(0, "127.0.0.1");
+  await listening;
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Extension input channel has no local address.");
+  return { authority: `127.0.0.1:${address.port}`, token, response };
 }
 
 function failProtocol(): void {
@@ -235,10 +350,22 @@ function send(value: ExtensionOutboundMessage): Promise<void> {
 async function stop(): Promise<void> {
   if (stopping) return;
   stopping = true;
-  child?.kill("SIGKILL");
-  const force = setTimeout(() => process.exit(1), 2_000);
+  const running = child;
+  const closed =
+    running && running.exitCode === null && running.signalCode === null
+      ? once(running, "close").catch(() => undefined)
+      : Promise.resolve();
+  const terminate = setTimeout(() => running?.kill("SIGKILL"), 500);
+  const force = setTimeout(() => process.exit(1), 10_000);
   force.unref();
+  input?.end();
+  inputServer?.close();
+  inputServer?.closeAllConnections();
   try {
+    await closed;
+    clearTimeout(terminate);
+    // Windows keeps the working directory locked for the life of the process.
+    process.chdir(initialDirectory);
     await SandboxManager.reset();
   } finally {
     process.exit(0);
@@ -247,9 +374,7 @@ async function stop(): Promise<void> {
 
 function quoteArgument(value: string): string {
   if (value.includes("\0")) throw new Error("Invalid process argument.");
-  return process.platform === "win32"
-    ? `'${value.replaceAll("'", "''")}'`
-    : `'${value.replaceAll("'", "'\\''")}'`;
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function linkedLibraries(executable: string): Promise<string[]> {
