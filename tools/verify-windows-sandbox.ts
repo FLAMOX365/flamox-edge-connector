@@ -2,7 +2,7 @@ import {
   SandboxManager,
   VENDORED_SRT_WIN_EXE,
 } from "@anthropic-ai/sandbox-runtime";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeCommand } from "../runtime/command.ts";
@@ -48,6 +48,47 @@ try {
     throw new Error(
       "The Windows extension sandbox requires profile access to be disabled.",
     );
+  }
+  const yarnPath = join(corepack, "dist", "yarn.js");
+  const build = await executeCommand(process.execPath, [yarnPath, "build"], {
+    cwd: directory,
+    inherit: true,
+  });
+  if (!build.success) throw new Error("Fixture build failed.");
+  const hostPath = join(directory, "runtime/extension-host.ts");
+  const supervisorPath = join(directory, "runtime/extension-sandbox.ts");
+  const host = await readFile(hostPath, "utf8");
+  const supervisor = await readFile(supervisorPath, "utf8");
+  try {
+    await writeFile(
+      hostPath,
+      host.replace(
+        '["ignore", "ignore", "ignore", "ipc"]',
+        '["ignore", "ignore", "inherit", "ipc"]',
+      ),
+    );
+    await writeFile(
+      supervisorPath,
+      supervisor.replace(
+        "child.stderr?.resume();",
+        'child.stderr?.on("data", (chunk) => process.stderr.write(chunk));',
+      ),
+    );
+    const probe = await executeCommand(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--test",
+        "--test-name-pattern=executes a declared action with scoped configuration",
+        "runtime/extension-host.spec.ts",
+      ],
+      { cwd: directory, inherit: true },
+    );
+    if (!probe.success) throw new Error("Windows worker fixture failed.");
+  } finally {
+    await writeFile(hostPath, host);
+    await writeFile(supervisorPath, supervisor);
   }
   console.log("Drive ACLs ready. Running the full Windows coverage suite.");
   const result = await executeCommand(
