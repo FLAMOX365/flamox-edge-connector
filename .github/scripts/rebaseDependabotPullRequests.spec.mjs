@@ -36,7 +36,14 @@ function fixture() {
       base: { ref: 'main', sha: mainSha, repo: identity },
     },
     behind: 1,
-    runs: [],
+    run: {
+      id: 202, event: 'pull_request', name: 'CI',
+      path: '.github/workflows/ci.yml',
+      repository: identity, head_repository: identity,
+      head_sha: 'b'.repeat(40), head_branch: 'dependabot/npm/update',
+      pull_requests: [{ number: 7 }],
+      conclusion: 'action_required', status: 'completed',
+    },
     update: true,
   };
   const calls = [];
@@ -45,14 +52,18 @@ function fixture() {
     if (method === 'PUT' && endpoint === `${prefix}/pulls/7/update-branch`) {
       if (records.update) {
         records.pull.head.sha = 'c'.repeat(40);
+        records.run.head_sha = records.pull.head.sha;
         records.behind = 0;
       }
       return { message: 'Updating pull request branch' };
     }
-    if (method === 'POST' && endpoint === `${prefix}/actions/workflows/ci.yml/dispatches`) {
-      records.runs.push({ head_sha: records.pull.head.sha });
-      return undefined;
+    if (method === 'POST' && endpoint === `${prefix}/actions/runs/202/approve`) {
+      records.run.conclusion = null;
+      records.run.status = 'queued';
+      return {};
     }
+    if (endpoint === `${prefix}/actions/runs/202`)
+      return structuredClone(records.run);
     if (endpoint === 'repositories/1317851991') return structuredClone(records.repository);
     if (endpoint === `${prefix}/branches/main`) return structuredClone(records.main);
     if (endpoint === `${prefix}/pulls?state=open&base=main&per_page=100&page=1`)
@@ -61,38 +72,38 @@ function fixture() {
     if (endpoint.startsWith(`${prefix}/compare/`))
       return { behind_by: records.behind, merge_base_commit: { sha: mainSha } };
     if (endpoint.startsWith(`${prefix}/actions/workflows/ci.yml/runs?`))
-      return { workflow_runs: structuredClone(records.runs) };
+      return { workflow_runs: [structuredClone(records.run)] };
     throw new Error('Unexpected fixture request.');
   };
   return { records, calls, request, sleep: async () => {} };
 }
 
-test('updates the expected bot head and dispatches CI once without bot comments', async () => {
+test('updates the expected bot head and approves its native PR verification once', async () => {
   const dependencies = fixture();
   const result = await rebaseDependabotPullRequests(context, dependencies);
   assert.deepEqual(result.updated, [7]);
-  assert.deepEqual(result.dispatched, [7]);
+  assert.deepEqual(result.approved, [7]);
   assert.deepEqual(dependencies.calls.filter((call) => call.method !== 'GET'), [
     { method: 'PUT', endpoint: `${prefix}/pulls/7/update-branch`,
       body: { expected_head_sha: 'b'.repeat(40) } },
-    { method: 'POST', endpoint: `${prefix}/actions/workflows/ci.yml/dispatches`,
-      body: { ref: 'dependabot/npm/update' } },
+    { method: 'POST', endpoint: `${prefix}/actions/runs/202/approve`,
+      body: undefined },
   ]);
   const repeated = await rebaseDependabotPullRequests(context, dependencies);
   assert.deepEqual(repeated.updated, []);
-  assert.deepEqual(repeated.dispatched, []);
+  assert.deepEqual(repeated.approved, []);
 });
 
-test('recovers when the branch update succeeded before CI could be dispatched', async () => {
+test('recovers when the branch update succeeded before its native CI could be approved', async () => {
   const dependencies = fixture();
   dependencies.records.behind = 0;
   const result = await rebaseDependabotPullRequests(context, dependencies);
   assert.deepEqual(result.updated, []);
-  assert.deepEqual(result.dispatched, [7]);
+  assert.deepEqual(result.approved, [7]);
   assert.equal(dependencies.calls.some((call) => call.method === 'PUT'), false);
 });
 
-test('does not dispatch an unconfirmed asynchronous update', async () => {
+test('does not approve CI for an unconfirmed asynchronous update', async () => {
   const dependencies = fixture();
   dependencies.records.update = false;
   await assert.rejects(rebaseDependabotPullRequests(context, dependencies), /not confirmed/u);
@@ -107,6 +118,31 @@ test('keeps conflicts and human pull requests out of automatic branch writes', a
     const selected = kind === 'foreign-context'
       ? { ...context, ref: 'refs/heads/feature' } : context;
     await rebaseDependabotPullRequests(selected, dependencies);
+    assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
+  }
+});
+
+
+test('does not approve an unrelated, foreign or non-PR workflow run', async () => {
+  for (const kind of ['foreign', 'wrong-pr', 'wrong-head', 'wrong-workflow', 'dispatched']) {
+    const dependencies = fixture();
+    dependencies.records.behind = 0;
+    if (kind === 'foreign') dependencies.records.run.head_repository = { id: 1 };
+    if (kind === 'wrong-pr') dependencies.records.run.pull_requests = [{ number: 8 }];
+    if (kind === 'wrong-head') dependencies.records.run.head_sha = 'd'.repeat(40);
+    if (kind === 'wrong-workflow') dependencies.records.run.path = '.github/workflows/noop.yml';
+    if (kind === 'dispatched') dependencies.records.run.event = 'workflow_dispatch';
+    await assert.rejects(rebaseDependabotPullRequests(context, dependencies), /native Dependabot/u);
+    assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
+  }
+});
+
+test('does not approve a run that is already active or completed', async () => {
+  for (const conclusion of [null, 'success', 'failure', 'cancelled']) {
+    const dependencies = fixture();
+    dependencies.records.behind = 0;
+    dependencies.records.run.conclusion = conclusion;
+    await rebaseDependabotPullRequests(context, dependencies);
     assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
   }
 });

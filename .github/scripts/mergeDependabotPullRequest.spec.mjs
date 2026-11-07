@@ -79,8 +79,6 @@ function fixture() {
     if (endpoint === `${prefix}/actions/workflows/ci.yml`) return structuredClone(records.workflow);
     if (endpoint === `${prefix}/actions/runs/202`) return structuredClone(records.run);
     if (endpoint === `${prefix}/pulls/7`) return structuredClone(records.pull);
-    if (endpoint === `${prefix}/commits/${head}/pulls?per_page=100`)
-      return structuredClone(records.associated ?? [records.pull]);
     if (endpoint.includes('/attempts/2/jobs?'))
       return { total_count: records.jobs.length, jobs: structuredClone(records.jobs) };
     if (endpoint === `${prefix}/branches/main`) {
@@ -150,31 +148,5 @@ test('requires all platform jobs, the exact bot identity and current main', asyn
       dependencies.calls.some((call) => call.method !== 'GET'),
       false,
     );
-  }
-});
-
-
-test('merges a dispatched CI only for its unique current Dependabot branch', async () => {
-  const dependencies = fixture();
-  dependencies.records.run.event = 'workflow_dispatch';
-  dependencies.records.run.pull_requests = [];
-  dependencies.records.run.head_branch = 'dependabot/npm/update';
-  dependencies.records.pull.head.ref = 'dependabot/npm/update';
-  assert.equal((await mergeDependabotPullRequest(context, dependencies)).status, 'merged');
-});
-
-test('rejects ambiguous commit associations and a mismatched dispatched branch', async () => {
-  for (const kind of ['ambiguous', 'wrong-branch', 'missing-association']) {
-    const dependencies = fixture();
-    dependencies.records.run.event = 'workflow_dispatch';
-    dependencies.records.run.pull_requests = [];
-    dependencies.records.run.head_branch = 'dependabot/npm/update';
-    dependencies.records.pull.head.ref = 'dependabot/npm/update';
-    if (kind === 'ambiguous') dependencies.records.associated =
-      [dependencies.records.pull, { ...dependencies.records.pull, number: 8 }];
-    if (kind === 'wrong-branch') dependencies.records.run.head_branch = 'human';
-    if (kind === 'missing-association') dependencies.records.associated = [];
-    assert.equal((await mergeDependabotPullRequest(context, dependencies)).status, 'skipped');
-    assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
   }
 });

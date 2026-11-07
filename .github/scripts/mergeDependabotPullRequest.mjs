@@ -66,7 +66,7 @@ export async function mergeDependabotPullRequest(context, dependencies = {}) {
   if (!eligibleRun(run, workflow, runId, runAttempt, identity))
     return skipped('ineligible-workflow-run');
 
-  const pullRequestNumber = await associatedPullRequest(run, request, repositoryPath, identity);
+  const pullRequestNumber = associatedPullRequest(run);
 
   if (pullRequestNumber === undefined) return skipped('ambiguous-pull-request');
 
@@ -104,7 +104,7 @@ export async function mergeDependabotPullRequest(context, dependencies = {}) {
   if (
     !eligibleRun(currentRun, workflow, runId, runAttempt, identity) ||
     currentRun.head_sha !== run.head_sha ||
-    (await associatedPullRequest(currentRun, request, repositoryPath, identity)) !== pullRequestNumber
+    associatedPullRequest(currentRun) !== pullRequestNumber
   )
     return skipped('workflow-run-changed');
 
@@ -147,7 +147,7 @@ function eligibleRun(run, workflow, runId, runAttempt, identity) {
   return (
     run?.id === runId &&
     run?.run_attempt === runAttempt &&
-    ['pull_request', 'workflow_dispatch'].includes(run?.event) &&
+    run?.event === 'pull_request' &&
     run?.status === 'completed' &&
     run?.conclusion === 'success' &&
     run?.workflow_id === workflow.id &&
@@ -161,16 +161,10 @@ function eligibleRun(run, workflow, runId, runAttempt, identity) {
   );
 }
 
-async function associatedPullRequest(run, request, repositoryPath, identity) {
-  const pulls = run.event === 'workflow_dispatch'
-    ? await request('GET', `${repositoryPath}/commits/${run.head_sha}/pulls?per_page=100`)
-    : run.pull_requests;
-  if (!Array.isArray(pulls) || pulls.length >= 100) return undefined;
-  const candidates = run.event === 'workflow_dispatch'
-    ? pulls.filter((pull) => eligiblePullRequest(pull, pull?.number, run, identity))
-    : pulls;
-  if (candidates.length !== 1) return undefined;
-  return positiveInteger(candidates[0]?.number);
+function associatedPullRequest(run) {
+  if (!Array.isArray(run?.pull_requests) || run.pull_requests.length !== 1) return undefined;
+
+  return positiveInteger(run.pull_requests[0]?.number);
 }
 
 function eligiblePullRequest(pullRequest, number, run, identity) {
@@ -178,16 +172,14 @@ function eligiblePullRequest(pullRequest, number, run, identity) {
     pullRequest?.number === number &&
     pullRequest?.state === 'open' &&
     pullRequest?.draft === false &&
-    pullRequest?.merged !== true && pullRequest?.merged_at == null &&
+    pullRequest?.merged === false &&
     pullRequest?.user?.login === 'dependabot[bot]' &&
     pullRequest?.user?.type === 'Bot' &&
     canonicalRepository(pullRequest?.head?.repo, identity) &&
     canonicalRepository(pullRequest?.base?.repo, identity) &&
     pullRequest?.base?.ref === identity.defaultBranch &&
     shaPattern.test(pullRequest?.base?.sha ?? '') &&
-    pullRequest?.head?.sha === run.head_sha &&
-    (run.event !== 'workflow_dispatch' ||
-     (typeof run.head_branch === 'string' && pullRequest.head.ref === run.head_branch))
+    pullRequest?.head?.sha === run.head_sha
   );
 }
 
