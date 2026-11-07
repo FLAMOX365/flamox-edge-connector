@@ -5,9 +5,9 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
-"@anthropic-ai/sandbox-runtime@npm:0.0.79":
-  version: 0.0.79
-  resolution: "@anthropic-ai/sandbox-runtime@npm:0.0.79"
+"@anthropic-ai/sandbox-runtime@npm:0.0.81":
+  version: 0.0.81
+  resolution: "@anthropic-ai/sandbox-runtime@npm:0.0.81"
   dependencies:
     "@pondwader/socks5-server": "npm:^1.0.10"
     commander: "npm:^12.1.0"
@@ -15,7 +15,7 @@ __metadata:
     zod: "npm:^3.25.0"
   bin:
     srt: dist/cli.js
-  checksum: 10c0/bd5c50e1aa351c7bd322856104d78e5091d8d83c823b59cf2a1543e2fbe74f48806992d47d799fd65ed221bbdd06979c75236585a303d4c5795de74145eb4897
+  checksum: 10c0/08719d1e6dae61f4bdab2229378a7b82df84369a3ca478d7d147f52f3979112484980d9b3a32bb37157a51aaa63a5c9ee5a25cc448fc7d1f89eb66cfb0e2bfb4
   languageName: node
   linkType: hard
 
@@ -114,7 +114,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@edge-connector/host@workspace:."
   dependencies:
-    "@anthropic-ai/sandbox-runtime": "npm:0.0.79"
+    "@anthropic-ai/sandbox-runtime": "npm:0.0.81"
     "@biomejs/biome": "npm:^2.5.15"
     "@edge-connector/sdk": "workspace:*"
     "@hono/node-server": "npm:^2.1.5"
@@ -130,7 +130,7 @@ __metadata:
     proper-lockfile: "npm:^4.1.2"
     tsx: "npm:^4.23.15"
     typescript: "npm:7.0.2"
-    undici: "npm:^8.12.1"
+    undici: "npm:^8.12.4"
     ws: "npm:^8.22.0"
     yaml: "npm:^2.9.1"
   bin:
@@ -864,9 +864,9 @@ __metadata:
   linkType: hard
 
 "fast-uri@npm:^3.0.1":
-  version: 3.1.8
-  resolution: "fast-uri@npm:3.1.8"
-  checksum: 10c0/c9c47860a7f9110176d94bb30a02942182f0bfc8d6780e9702f320336dc2dadb83b1d9879cceaf8d4b439642d1ec6d78c317cb808ab155455551bd5d9d7c22d8
+  version: 3.1.9
+  resolution: "fast-uri@npm:3.1.9"
+  checksum: 10c0/052757540d8c0bbc16bb124a45b8f5cb5d0932f9b89f019221ee41cdb3cafc1db44b2e809d6b888b87922af3e5560a863124454e9d9193e1fc955887357b5add
   languageName: node
   linkType: hard
 
@@ -953,9 +953,9 @@ __metadata:
   linkType: hard
 
 "node-forge@npm:^1.4.0":
-  version: 1.4.0
-  resolution: "node-forge@npm:1.4.0"
-  checksum: 10c0/67330a5f1f95257a4c8a93b7d555abe87b5f15e350123aa396c97a21a8ca94f9c6549008eb2c73668a91e0d7e3a905785acbd8f8bd0751c29401292011f8f8e1
+  version: 1.4.3
+  resolution: "node-forge@npm:1.4.3"
+  checksum: 10c0/02202bf144dfb6f9662c21a2fdbc6251cb1e8b6dd7e4016d2bb8c996fb61a46383f7426503e06e3f15014d1b8a3215c32ee5cf22e5023ecd8e6d88b6a41dada0
   languageName: node
   linkType: hard
 
@@ -1249,10 +1249,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^8.12.1, undici@npm:^8.4.1":
-  version: 8.12.1
-  resolution: "undici@npm:8.12.1"
-  checksum: 10c0/8ba448a30f85ec9bffe0065b45b471a578dbb56eafd4162741fd7be3b955672e98fabd7a4ab0703365d5ffc6f1927f4ed1c1221f678aa67af18fb7bc3dfe283b
+"undici@npm:^8.12.4, undici@npm:^8.4.1":
+  version: 8.12.4
+  resolution: "undici@npm:8.12.4"
+  checksum: 10c0/2a83590ce3347ca4e8fb83917bd7ad1d0bcb72ecb6d1a5066f01a89b4941becac569412aa27d7318119ea1a20d217018cce535f8eeed3c1b307d87426f96cfe3
   languageName: node
   linkType: hard
 
@@ -1298,9 +1298,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25.0":
-  version: 3.25.76
-  resolution: "zod@npm:3.25.76"
-  checksum: 10c0/5718ec35e3c40b600316c5b4c5e4976f7fee68151bc8f8d90ec18a469be9571f072e1bbaace10f1e85cf8892ea12d90821b200e980ab46916a6166a4260a983c
+"zod@npm:4.6.6":
+  version: 4.6.6
+  resolution: "zod@npm:4.6.6"
+  checksum: 10c0/447a3113bb743c54ab839213ff95e9e8c197cc1206f65270c18aac35aa70c47a5c8cab753be911b574df9a8a9801ea74ed6be776575232cae0084e51dab3e970
   languageName: node
   linkType: hard

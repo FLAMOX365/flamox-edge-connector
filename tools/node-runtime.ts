@@ -62,10 +62,19 @@ export async function desktopNode(root: string): Promise<string> {
       await writeFile(path, bytes);
       const unpack =
         platform === "win32"
-          ? await executeCommand("tar.exe", ["-xf", path, "-C", staging])
+          ? await executeCommand(
+              join(
+                process.env.SystemRoot ?? "C:\\Windows",
+                "System32",
+                "tar.exe",
+              ),
+              ["-xf", path, "-C", staging],
+            )
           : await executeCommand("tar", ["-xzf", path, "-C", staging]);
       if (!unpack.success)
-        throw new Error("Could not extract the Node.js runtime.");
+        throw new Error("Could not extract the Node.js runtime.", {
+          cause: new Error(new TextDecoder().decode(unpack.stderr)),
+        });
       await rename(join(staging, distribution), join(cache, distribution));
     } finally {
       await rm(staging, { recursive: true, force: true });

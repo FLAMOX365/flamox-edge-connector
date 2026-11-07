@@ -51,6 +51,7 @@ test("ControlPlaneClient pairs without credentials and authenticates later reque
     fetcher,
   );
   await client.getDesiredState(0);
+  await client.heartbeat(new AbortController().signal);
 
   assertEquals(
     requests[0].url,
@@ -68,6 +69,43 @@ test("ControlPlaneClient pairs without credentials and authenticates later reque
     new Headers(requests[1].init?.headers).get("authorization"),
     `EdgeConnector ${identity.connectorId}.${identity.credentialSecret}`,
   );
+  assertEquals(
+    requests[2].url,
+    "https://api.example.test/api/v1/edge/connectors/control/heartbeat",
+  );
+  assertEquals(requests[2].init?.method, "POST");
+  assertEquals(requests[2].init?.body, undefined);
+  assertEquals(
+    new Headers(requests[2].init?.headers).get("authorization"),
+    `EdgeConnector ${identity.connectorId}.${identity.credentialSecret}`,
+  );
+});
+
+test("ControlPlaneClient aborts a pending heartbeat with runtime shutdown", async () => {
+  const controller = new AbortController();
+  let requestSignal: AbortSignal | undefined;
+  const fetcher: typeof fetch = (_input, init) =>
+    new Promise((_resolve, reject) => {
+      requestSignal = init?.signal ?? undefined;
+      requestSignal?.addEventListener(
+        "abort",
+        () => reject(requestSignal?.reason),
+        { once: true },
+      );
+    });
+  const identity = {
+    connectorId: "fixture",
+    credentialSecret: "fixture-credential",
+  } as ConnectorIdentity;
+  const client = new ControlPlaneClient(
+    "https://api.example.test/api/v1/",
+    identity,
+    fetcher,
+  );
+  const pending = client.heartbeat(controller.signal);
+  controller.abort(new Error("runtime shutdown"));
+  await assertRejects(() => pending, Error, "runtime shutdown");
+  assertEquals(requestSignal?.aborted, true);
 });
 
 test("ControlPlaneClient refuses artifact downloads from another origin", async () => {

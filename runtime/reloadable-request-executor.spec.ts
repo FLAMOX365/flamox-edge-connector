@@ -3,6 +3,7 @@ import { makeTempDirectory } from "./files.ts";
 import * as fs from "node:fs/promises";
 import { assertEquals } from "../test/assert.ts";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
 import { createLogger } from "./logger.ts";
 import { createReloadableProtocolExecutor } from "./reloadable-request-executor.ts";
@@ -50,10 +51,9 @@ test("ReloadableProtocolExecutor switches between HTTP proxy and function mode",
 });
 
 test("Integration: Starter template loads valid functions and isolates corrupt ones", async () => {
-  const starterFunctionsDir = new URL(
-    "../templates/starter/functions",
-    import.meta.url,
-  ).pathname;
+  const starterFunctionsDir = fileURLToPath(
+    new URL("../templates/starter/functions", import.meta.url),
+  );
 
   // Capture all log messages
   const logs: { level: string; message: string }[] = [];

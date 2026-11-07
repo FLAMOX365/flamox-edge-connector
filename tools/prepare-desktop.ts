@@ -1,7 +1,6 @@
 import { build } from "esbuild";
 import { cp, copyFile, mkdir, readFile, rm, chmod } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { executeCommand } from "../runtime/command.ts";
@@ -22,11 +21,9 @@ const manifest = JSON.parse(
 for (const name of Object.keys(manifest.dependencies))
   await copyDependency(name, root, resources);
 
-const rustc =
-  process.platform === "win32"
-    ? join(homedir(), ".cargo/bin/rustc.exe")
-    : join(homedir(), ".cargo/bin/rustc");
-const compiler = await executeCommand(rustc, ["-vV"]);
+const compiler = await executeCommand("rustc", ["-vV"], {
+  cwd: join(root, "desktop/src-tauri"),
+});
 if (!compiler.success)
   throw new Error("The Rust target could not be determined.");
 const target = new TextDecoder()
