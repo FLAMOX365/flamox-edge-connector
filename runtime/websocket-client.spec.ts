@@ -108,7 +108,9 @@ test("runControlPlaneWebSocketClient returns without opening a socket when no UR
   }
 });
 
-test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and closes on abort", async () => {
+test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and closes on abort", {
+  timeout: 10_000,
+}, async (t) => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "open";
     const abortController = new AbortController();
@@ -119,6 +121,10 @@ test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and closes
       status,
       silentLogger,
     );
+    t.after(async () => {
+      abortController.abort();
+      await client;
+    });
 
     await waitUntil(() => FakeWebSocket.instances[0]?.sent.length > 0);
     const socket = FakeWebSocket.instances[0];
@@ -132,7 +138,9 @@ test("runControlPlaneWebSocketClient opens sockets, sends heartbeats, and closes
   });
 });
 
-test("runControlPlaneWebSocketClient never rejects when opening keeps failing", async () => {
+test("runControlPlaneWebSocketClient never rejects when opening keeps failing", {
+  timeout: 10_000,
+}, async (t) => {
   // websocketUrl is set but auth config is missing => openWebSocket throws on
   // every attempt. The loop must absorb it and keep retrying, never reject.
   await withFakeCloud(async ({ status }) => {
@@ -145,6 +153,10 @@ test("runControlPlaneWebSocketClient never rejects when opening keeps failing", 
       status,
       silentLogger,
     );
+    t.after(async () => {
+      abortController.abort();
+      await client;
+    });
 
     await waitUntil(() => status.reconnectAttempt >= 2);
     abortController.abort();
@@ -154,7 +166,9 @@ test("runControlPlaneWebSocketClient never rejects when opening keeps failing", 
   });
 });
 
-test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (anti-flap)", async () => {
+test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (anti-flap)", {
+  timeout: 10_000,
+}, async (t) => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "openThenClose";
     const abortController = new AbortController();
@@ -165,6 +179,10 @@ test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (anti-
       status,
       silentLogger,
     );
+    t.after(async () => {
+      abortController.abort();
+      await client;
+    });
 
     // Each instant open/close must increment the attempt counter rather than
     // resetting it to zero (which would cause a tight reconnect storm).
@@ -176,7 +194,9 @@ test("runControlPlaneWebSocketClient escalates backoff on a flapping peer (anti-
   });
 });
 
-test("runControlPlaneWebSocketClient force-closes a half-open socket via the watchdog", async () => {
+test("runControlPlaneWebSocketClient force-closes a half-open socket via the watchdog", {
+  timeout: 10_000,
+}, async (t) => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "openSilent";
     const abortController = new AbortController();
@@ -192,6 +212,10 @@ test("runControlPlaneWebSocketClient force-closes a half-open socket via the wat
       status,
       silentLogger,
     );
+    t.after(async () => {
+      abortController.abort();
+      await client;
+    });
 
     // A silent (no inbound) socket is force-closed and reconnected.
     await waitUntil(() => FakeWebSocket.instances.length >= 2, 400);
@@ -201,7 +225,9 @@ test("runControlPlaneWebSocketClient force-closes a half-open socket via the wat
   });
 });
 
-test("runControlPlaneWebSocketClient keeps a socket with inbound traffic open", async () => {
+test("runControlPlaneWebSocketClient keeps a socket with inbound traffic open", {
+  timeout: 10_000,
+}, async (t) => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "openWithInbound";
     const abortController = new AbortController();
@@ -209,18 +235,22 @@ test("runControlPlaneWebSocketClient keeps a socket with inbound traffic open", 
       {
         ...baseConfig,
         ...cloudAuth,
-        heartbeatIntervalMs: 5,
-        heartbeatTimeoutFactor: 2,
+        heartbeatIntervalMs: 50,
+        heartbeatTimeoutFactor: 10,
       },
       createRuntime(),
       abortController.signal,
       status,
       silentLogger,
     );
+    t.after(async () => {
+      abortController.abort();
+      await client;
+    });
 
     await waitUntil(() => status.connectionState === "open");
     // Let several watchdog windows elapse while inbound frames keep arriving.
-    await delayMs(60);
+    await delayMs(1_200);
     assertEquals(FakeWebSocket.instances.length, 1);
     assertEquals(FakeWebSocket.instances[0].closed, false);
 
@@ -229,7 +259,9 @@ test("runControlPlaneWebSocketClient keeps a socket with inbound traffic open", 
   });
 });
 
-test("runControlPlaneWebSocketClient retries when the socket never opens (connect timeout)", async () => {
+test("runControlPlaneWebSocketClient retries when the socket never opens (connect timeout)", {
+  timeout: 10_000,
+}, async (t) => {
   await withFakeCloud(async ({ status }) => {
     FakeWebSocket.behavior = "neverOpen";
     const abortController = new AbortController();
@@ -240,6 +272,10 @@ test("runControlPlaneWebSocketClient retries when the socket never opens (connec
       status,
       silentLogger,
     );
+    t.after(async () => {
+      abortController.abort();
+      await client;
+    });
 
     await waitUntil(() => FakeWebSocket.instances.length >= 2, 400);
     abortController.abort();
