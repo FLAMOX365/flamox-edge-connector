@@ -4,6 +4,7 @@ import { watchFunctionsDirectory } from "./function-watcher.ts";
 import { createLogger } from "./logger.ts";
 import { HttpFunctionScanner } from "./function-scanner.ts";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { assertEquals } from "../test/assert.ts";
 import { join } from "node:path";
 import { isFunctionsPath } from "./function-watcher.ts";
@@ -112,7 +113,7 @@ test("Node watcher reloads changed TypeScript behavior and removes deleted route
         ? await (await matched.handler({} as never)).text()
         : null;
       observations.push(body);
-      if (expected?.value === body) expected.resolve();
+      if (expected && expected.value === body) expected.resolve();
     },
   });
   t.after(async () => {
@@ -128,7 +129,12 @@ test("Node watcher reloads changed TypeScript behavior and removes deleted route
     path,
     "export function GET() { return new Response('first'); }",
   );
-  await created;
+  // Some filesystems finish subscribing after the watcher logs that it is starting.
+  while (!(await Promise.race([created.then(() => true), delay(50, false)]))) {
+    if (t.signal.aborted) return;
+    const now = new Date();
+    await fs.utimes(path, now, now);
+  }
   assertEquals(scanner.hasRoute("/health"), true);
   const updated = next("updated");
   await fs.writeFile(

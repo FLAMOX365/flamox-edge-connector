@@ -17,7 +17,7 @@
   },
   "scripts": {
     "build": "yarn workspace @edge-connector/sdk build && tsc -p tsconfig.build.json && node tools/build-worker.ts",
-    "check": "tsc --noEmit",
+    "check": "yarn workspace @edge-connector/sdk build && tsc --noEmit",
     "test": "yarn build && node --import tsx --test sdk/*.spec.ts runtime/*.spec.ts desktop/*.spec.ts cli/*.spec.ts",
     "test:coverage": "yarn build && node --import tsx --test --experimental-test-coverage --test-coverage-include='runtime/**/*.ts' --test-coverage-include='sdk/**/*.ts' --test-coverage-include='cli/**/*.ts' --test-coverage-include='desktop/*.ts' --test-coverage-exclude='**/*.spec.ts' --test-coverage-exclude='**/*.d.ts' --test-coverage-exclude='runtime/generated/**' --test-coverage-include-all sdk/*.spec.ts runtime/*.spec.ts desktop/*.spec.ts cli/*.spec.ts",
     "test:native": "yarn build && node tools/prepare-desktop.ts && cd desktop/src-tauri && cargo test --lib",
@@ -47,9 +47,12 @@
     "proper-lockfile": "^4.1.2",
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
-    "undici": "^8.12.1",
+    "undici": "^8.12.4",
     "ws": "^8.22.0",
     "yaml": "^2.9.1"
+  },
+  "resolutions": {
+    "@anthropic-ai/sandbox-runtime/zod": "4.6.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
