@@ -183,6 +183,11 @@ async function start(options: SandboxStart): Promise<void> {
     `--allow-fs-read=${worker}`,
     "--allow-net",
     "--use-env-proxy",
+    // The supervisor resolves the worker path before isolation. Node's
+    // JavaScript realpath would lstat each ancestor, including denied drives.
+    ...(windowsBroker
+      ? ["--preserve-symlinks-main", "--preserve-symlinks"]
+      : []),
     "--max-old-space-size=128",
     worker,
   ];
