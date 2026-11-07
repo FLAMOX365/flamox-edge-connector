@@ -8,7 +8,7 @@ const requestFailure =
   'Dependabot GitHub API request failed; inspect the workflow and pull request before retrying.';
 
 /**
- * Calls GitHub REST with the workflow's existing token and bounded native CLI execution.
+ * Calls GitHub's API with the workflow's existing token and bounded native CLI execution.
  *
  * @param method - The HTTP method for the trusted repository operation.
  * @param endpoint - The repository-scoped REST endpoint constructed by the owning helper.
