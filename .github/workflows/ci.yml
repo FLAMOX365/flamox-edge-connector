@@ -50,6 +50,31 @@ jobs:
       - run: yarn fmt
       - run: yarn lint
       - run: yarn check
+      - name: Diagnose Windows sandbox bootstrap with a fixture
+        if: runner.os == 'Windows'
+        timeout-minutes: 4
+        run: |
+          yarn build
+          trap 'git restore -- runtime/extension-host.ts runtime/extension-sandbox.ts' EXIT
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          function replace(file, before, after) {
+            const source = readFileSync(file, 'utf8');
+            if (!source.includes(before)) throw new Error('Missing diagnostic target: ' + file);
+            writeFileSync(file, source.replace(before, after));
+          }
+          const host = 'runtime/extension-host.ts';
+          replace(host, '["ignore", "ignore", "ignore", "ipc"]', '["ignore", "ignore", "inherit", "ipc"]');
+          replace(host, 'startupTimeoutMs ?? 10_000', 'startupTimeoutMs ?? 150_000');
+          const supervisor = 'runtime/extension-sandbox.ts';
+          replace(supervisor, 'await SandboxManager.initialize(', 'console.error("fixture: initializing sandbox");\n  await SandboxManager.initialize(');
+          replace(supervisor, 'if (!SandboxManager.isSandboxingEnabled())', 'console.error("fixture: sandbox initialized");\n  if (!SandboxManager.isSandboxingEnabled())');
+          replace(supervisor, 'child = spawn(file', 'console.error("fixture: starting broker");\n  child = spawn(file');
+          const manager = 'node_modules/@anthropic-ai/sandbox-runtime/dist/sandbox/sandbox-manager.js';
+          replace(manager, 'grantWindowsAcl({', 'console.error("fixture: granting ACLs");\n                grantWindowsAcl({');
+          replace(manager, 'stampWindowsAcl({', 'console.error("fixture: stamping ACLs");\n                stampWindowsAcl({');
+          JS
+          node --import tsx --test --test-name-pattern='executes a declared action with scoped configuration' runtime/extension-host.spec.ts
       - run: yarn test:coverage
         timeout-minutes: 6
       - run: yarn check:templates
