@@ -271,7 +271,7 @@ export async function testProject(directory: string): Promise<void> {
     process.execPath,
     [
       "--import",
-      fileURLToPath(import.meta.resolve("tsx")),
+      import.meta.resolve("tsx"),
       "--test",
       ...testFiles,
     ],
