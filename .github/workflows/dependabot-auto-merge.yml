@@ -11,7 +11,8 @@ jobs:
   merge:
     if: >-
       ${{ github.repository_id == '1317851991' &&
-          github.event.workflow_run.event == 'pull_request' &&
+          (github.event.workflow_run.event == 'pull_request' ||
+           github.event.workflow_run.event == 'workflow_dispatch') &&
           github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.head_repository.id == github.event.repository.id }}
     runs-on: ubuntu-latest
