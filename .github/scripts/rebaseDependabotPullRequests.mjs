@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { requestDependabotGitHub } from './requestDependabotGitHub.mjs';
 import { resolveDependabotRepository } from './resolveDependabotRepository.mjs';
+import { mergeDependabotPullRequest } from './mergeDependabotPullRequest.mjs';
 
 // #endregion
 
@@ -50,7 +51,25 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
     request,
     `${repositoryPath}/pulls?state=open&base=${encodeURIComponent(identity.defaultBranch)}`,
   );
-  const result = { status: 'completed', mainSha, updated: [], approved: [], skipped: [] };
+  const result = { status: 'completed', mainSha, updated: [], approved: [], merged: [], pending: [], skipped: [] };
+  const mergeVerified = async (pull, run) => {
+    const merge = dependencies.merge ?? mergeDependabotPullRequest;
+    const confirmed = await merge({
+      ...context, runId: run.id, runAttempt: run.run_attempt,
+    }, { request });
+    if (confirmed.status !== 'merged') {
+      // A concurrent native auto-merge can finish before our merge read.
+      const current = await request('GET', `${repositoryPath}/pulls/${pull.number}`);
+      if (current?.merged !== true || current.node_id !== pull.node_id ||
+          current.head?.sha !== pull.head.sha ||
+          current.head?.repo?.id !== identity.id ||
+          current.base?.repo?.id !== identity.id ||
+          current.base?.ref !== identity.defaultBranch ||
+          !shaPattern.test(current.merge_commit_sha ?? ''))
+        throw new Error('The verified Dependabot merge was not confirmed.');
+    }
+    result.merged.push(pull.number);
+  };
   const seen = new Set();
   const skip = (number, reason) => result.skipped.push({ number, reason });
 
@@ -126,8 +145,9 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
       await sleep(1000);
     }
     if (!run) throw new Error('GitHub has not created the native Dependabot PR verification.');
-    if (run.conclusion !== 'action_required') {
-      skip(number, 'verification-already-requested');
+    if (run.status === 'completed' &&
+        !['action_required', 'success'].includes(run.conclusion)) {
+      skip(number, 'verification-failed');
       continue;
     }
     const latest = await request('GET', pullRequestPath);
@@ -139,20 +159,108 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
     if (latestMain?.commit?.sha !== mainSha)
       return { ...result, status: 'stopped', reason: 'main-changed' };
     const latestRun = await request('GET', `${repositoryPath}/actions/runs/${run.id}`);
-    if (!eligibleRun(latestRun, latest, identity) ||
-        latestRun.conclusion !== 'action_required') {
+    if (!eligibleRun(latestRun, latest, identity)) {
       skip(number, 'verification-changed');
       continue;
     }
-    await request('POST', `${repositoryPath}/actions/runs/${run.id}/approve`);
-    result.approved.push(number);
+    if (latestRun.conclusion === 'action_required') {
+      await request('POST', `${repositoryPath}/actions/runs/${run.id}/approve`);
+      result.approved.push(number);
+    }
+    if (latestRun.status === 'completed' &&
+        !['action_required', 'success'].includes(latestRun.conclusion)) {
+      skip(number, 'verification-failed');
+      continue;
+    }
+    if (latest.auto_merge == null) {
+      // GitHub's native auto-merge enforces the repository's required checks.
+      // A completed, clean PR is merged through the same exact-run validator.
+      if (latestRun.conclusion === 'success') {
+        await mergeVerified(latest, latestRun);
+        return { ...result, status: 'stopped', reason: 'main-changed' };
+      }
+      const enabled = await request('POST', 'graphql', {
+        query: `mutation EnableDependencyAutoMerge($id: ID!) {
+          enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH}) {
+            pullRequest {
+              number headRefOid baseRefName state
+              mergeCommit { oid }
+              autoMergeRequest { enabledAt }
+            }
+          }
+        }`,
+        variables: { id: latest.node_id },
+      });
+      const confirmed = enabled?.data?.enablePullRequestAutoMerge?.pullRequest;
+      if (!enabled?.errors?.length && confirmed?.number === number &&
+          confirmed.headRefOid === latest.head.sha &&
+          confirmed.baseRefName === identity.defaultBranch &&
+          confirmed.state === 'MERGED' && shaPattern.test(confirmed.mergeCommit?.oid ?? '')) {
+        result.merged.push(number);
+        return { ...result, status: 'stopped', reason: 'main-changed' };
+      }
+      if (enabled?.errors?.length || confirmed?.number !== number ||
+          confirmed.headRefOid !== latest.head.sha ||
+          confirmed.baseRefName !== identity.defaultBranch ||
+          confirmed.state !== 'OPEN' || !confirmed.autoMergeRequest) {
+        // Verification may have completed between the read and the mutation.
+        await mergeVerified(latest, latestRun);
+        return { ...result, status: 'stopped', reason: 'main-changed' };
+      }
+    }
+    result.pending.push({ number, runId: latestRun.id });
   }
   return result;
+}
+
+/**
+ * Keeps a trusted metadata owner alive until native auto-merge advances main.
+ * Actions-authored merges do not emit a new push workflow, so the owner starts
+ * the next bounded queue iteration explicitly. CI failures preserve the PRs.
+ */
+export async function advanceDependabotQueue(context, result, dependencies = {}) {
+  if (!['push', 'workflow_dispatch'].includes(context?.eventName) ||
+      context.ref !== 'refs/heads/main' ||
+      !['completed', 'stopped'].includes(result?.status))
+    return { status: 'idle' };
+  if (!result.pending?.length && result.reason !== 'main-changed')
+    return { status: 'idle' };
+  const request = dependencies.request ?? requestDependabotGitHub;
+  const sleep = dependencies.sleep ?? delay;
+  const identity = await resolveDependabotRepository(context, request);
+  if (!identity) return { status: 'idle' };
+  const mainPath = `${identity.path}/branches/${encodeURIComponent(identity.defaultBranch)}`;
+  for (let attempt = 0; attempt < 110; attempt++) {
+    const main = await request('GET', mainPath);
+    if (main?.name !== identity.defaultBranch || !shaPattern.test(main?.commit?.sha ?? ''))
+      throw new Error('Invalid default branch while waiting for Dependabot.');
+    if (main.commit.sha !== result.mainSha) {
+      await request('POST', `${identity.path}/actions/workflows/rebase-dependabot.yml/dispatches`, {
+        ref: identity.defaultBranch,
+      });
+      return { status: 'advanced', mainSha: main.commit.sha };
+    }
+    let allFailed = result.pending.length > 0;
+    for (const { runId } of result.pending) {
+      const run = await request('GET', `${identity.path}/actions/runs/${runId}`);
+      if (run?.id !== runId || typeof run.status !== 'string')
+        throw new Error('Invalid Dependabot verification while waiting for merge.');
+      if (run.status !== 'completed' ||
+          !['failure', 'cancelled', 'timed_out', 'skipped', 'startup_failure'].includes(run.conclusion)) {
+        allFailed = false;
+        break;
+      }
+    }
+    if (allFailed) return { status: 'verification-failed' };
+    await sleep(30_000);
+  }
+  return { status: 'timed-out' };
 }
 
 function eligibleRun(run, pullRequest, identity) {
   return (
     Number.isSafeInteger(run?.id) && run.id > 0 &&
+    Number.isSafeInteger(run.run_attempt) && run.run_attempt > 0 &&
     run.event === 'pull_request' &&
     run.name === 'CI' &&
     typeof run.path === 'string' &&
@@ -172,6 +280,7 @@ function eligibleRun(run, pullRequest, identity) {
 function eligiblePullRequest(value, number, identity) {
   return (
     value?.number === number &&
+    typeof value.node_id === 'string' && value.node_id.length > 0 &&
     value?.state === 'open' &&
     value?.draft === false &&
     value?.merged !== true &&
@@ -220,15 +329,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (process.argv.length !== 2)
       throw new Error('Dependabot rebase accepts only its main-branch workflow environment.');
 
-    const result = await rebaseDependabotPullRequests({
+    const context = {
       repository: process.env.GITHUB_REPOSITORY,
       repositoryId: process.env.GITHUB_REPOSITORY_ID,
       defaultBranch: process.env.DEFAULT_BRANCH,
       eventName: process.env.GITHUB_EVENT_NAME,
       ref: process.env.GITHUB_REF,
-    });
-
+    };
+    const result = await rebaseDependabotPullRequests(context);
     process.stdout.write(`${JSON.stringify(result)}\n`);
+    const queue = await advanceDependabotQueue(context, result);
+    process.stdout.write(`${JSON.stringify(queue)}\n`);
+    if (['verification-failed', 'timed-out'].includes(queue.status))
+      process.exitCode = 1;
   } catch {
     process.stderr.write('Dependabot rebase could not complete; inspect the workflow run.\n');
     process.exitCode = 1;
