@@ -2,7 +2,8 @@ import {
   SandboxManager,
   VENDORED_SRT_WIN_EXE,
 } from "@anthropic-ai/sandbox-runtime";
-import { realpath } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeCommand } from "../runtime/command.ts";
 import { windowsReadRoots } from "../runtime/windows-sandbox-roots.ts";
@@ -15,11 +16,16 @@ if (process.platform !== "win32" || !corepack) {
 }
 const directory = await realpath(process.cwd());
 const roots = await windowsReadRoots(directory);
+const broker = await realpath(VENDORED_SRT_WIN_EXE);
+const probeDirectory = await realpath(
+  await mkdtemp(join(tmpdir(), "edge-sandbox-verify-")),
+);
 
 // Keep the same drive denials held throughout the suite. Each extension still
 // starts its own SRT session with only its code grants and its own proxy.
 console.log("Preparing drive ACLs for the Windows sandbox account.");
 try {
+  process.chdir(probeDirectory);
   await SandboxManager.initialize({
     network: {
       allowedDomains: [],
@@ -29,11 +35,14 @@ try {
     },
     filesystem: {
       denyRead: roots.map((path) => ({ path, literal: true })),
-      allowRead: [],
+      allowRead: [broker, probeDirectory].map((path) => ({
+        path,
+        literal: true,
+      })),
       allowWrite: [],
       denyWrite: [],
     },
-    windows: { srtWin: { path: VENDORED_SRT_WIN_EXE } },
+    windows: { srtWin: { path: broker } },
   });
   if (SandboxManager.getWindowsProfileRead() !== "absent") {
     throw new Error(
@@ -48,5 +57,10 @@ try {
   );
   process.exitCode = result.code;
 } finally {
-  await SandboxManager.reset();
+  try {
+    await SandboxManager.reset();
+  } finally {
+    process.chdir(directory);
+    await rm(probeDirectory, { recursive: true, force: true });
+  }
 }

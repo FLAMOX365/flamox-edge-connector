@@ -69,6 +69,13 @@ async function start(options: SandboxStart): Promise<void> {
   const executable = await realpath(process.execPath);
   const worker = await realpath(options.workerPath);
   const directory = await realpath(options.extensionDirectory);
+  const windowsBroker =
+    process.platform === "win32"
+      ? await realpath(VENDORED_SRT_WIN_EXE)
+      : undefined;
+  // The broker's secondary logon probe executes the broker itself from the
+  // current directory as the sandbox account, after the drive masks are set.
+  if (windowsBroker) process.chdir(directory);
   // Only immutable code and public operating-system runtime files are readable.
   // Node's narrower fs permissions are additional protection, not the sandbox.
   // The Windows sandbox account already has access to the OS runtime.
@@ -97,6 +104,7 @@ async function start(options: SandboxStart): Promise<void> {
             "/etc/ld.so.cache",
             "/etc/ssl/certs",
           ];
+  if (windowsBroker) systemPaths.push(windowsBroker);
   if (process.platform === "darwin")
     systemPaths.push(...(await linkedLibraries(executable)));
   // Linux hides the installation directory. Re-expose only the trusted
@@ -150,8 +158,8 @@ async function start(options: SandboxStart): Promise<void> {
       },
       filesystem,
       ...(seccompPath ? { seccomp: { applyPath: seccompPath } } : {}),
-      ...(process.platform === "win32"
-        ? { windows: { srtWin: { path: VENDORED_SRT_WIN_EXE } } }
+      ...(windowsBroker
+        ? { windows: { srtWin: { path: windowsBroker } } }
         : {}),
       enableWeakerNestedSandbox: false,
       enableWeakerNetworkIsolation: false,
