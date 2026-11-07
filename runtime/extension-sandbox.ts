@@ -1,4 +1,7 @@
-import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
+import {
+  SandboxManager,
+  VENDORED_SRT_WIN_EXE,
+} from "@anthropic-ai/sandbox-runtime";
 import { spawn, type ChildProcess } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
@@ -61,11 +64,6 @@ process.once("SIGINT", () => void stop());
 async function start(options: SandboxStart): Promise<void> {
   if (!SandboxManager.isSupportedPlatform())
     throw new Error("This operating system cannot isolate extensions.");
-  const dependencies = await SandboxManager.checkDependenciesAsync();
-  if (dependencies.errors.length)
-    throw new Error(
-      `Extension sandbox prerequisites are missing: ${dependencies.errors.join("; ")}`,
-    );
   const executable = await realpath(process.execPath);
   const worker = await realpath(options.workerPath);
   const directory = await realpath(options.extensionDirectory);
@@ -143,6 +141,9 @@ async function start(options: SandboxStart): Promise<void> {
                 literal: true,
               })),
       },
+      ...(process.platform === "win32"
+        ? { windows: { srtWin: { path: VENDORED_SRT_WIN_EXE } } }
+        : {}),
       enableWeakerNestedSandbox: false,
       enableWeakerNetworkIsolation: false,
       allowAppleEvents: false,

@@ -49,6 +49,7 @@ jobs:
       - run: yarn lint
       - run: yarn check
       - run: yarn test:coverage
+        timeout-minutes: 6
       - run: yarn check:templates
       - run: yarn verify:generated
       - name: Test native desktop protocol and lifecycle

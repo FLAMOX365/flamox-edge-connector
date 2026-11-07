@@ -473,9 +473,17 @@ export async function executeDevelopmentAction(options: {
 
 async function installProjectDependencies(directory: string): Promise<void> {
   // A new project has no lockfile yet, even when its scaffolder runs in CI.
-  const output = await executeCommand("yarn", ["install", "--no-immutable"], {
-    cwd: directory,
-  });
+  const args = ["install", "--no-immutable"];
+  const corepackRoot = process.env["COREPACK_ROOT"];
+  // On Windows the Corepack Yarn shim is a batch file, not an executable.
+  const output =
+    process.platform === "win32" && corepackRoot
+      ? await executeCommand(
+          process.execPath,
+          [join(corepackRoot, "dist", "yarn.js"), ...args],
+          { cwd: directory },
+        )
+      : await executeCommand("yarn", args, { cwd: directory });
   if (!output.success) {
     throw commandError("Dependency installation", output);
   }
