@@ -55,7 +55,7 @@ export async function requestDependabotGitHub(method, endpoint, body) {
           }
 
           try {
-            resolveRequest(JSON.parse(stdout));
+            resolveRequest(stdout.trim() === '' ? undefined : JSON.parse(stdout));
           } catch {
             reject(new Error(requestFailure));
           }

@@ -32,52 +32,81 @@ function fixture() {
       draft: false,
       merged: false,
       user: { login: 'dependabot[bot]', type: 'Bot' },
-      head: { sha: 'b'.repeat(40), repo: identity },
+      head: { sha: 'b'.repeat(40), ref: 'dependabot/npm/update', repo: identity },
       base: { ref: 'main', sha: mainSha, repo: identity },
     },
-    comments: [],
+    behind: 1,
+    runs: [],
+    update: true,
   };
   const calls = [];
   const request = async (method, endpoint, body) => {
     calls.push({ method, endpoint, body });
-    if (method === 'POST' && endpoint === `${prefix}/issues/7/comments`)
-      return { id: 123, body: body.body };
+    if (method === 'PUT' && endpoint === `${prefix}/pulls/7/update-branch`) {
+      if (records.update) {
+        records.pull.head.sha = 'c'.repeat(40);
+        records.behind = 0;
+      }
+      return { message: 'Updating pull request branch' };
+    }
+    if (method === 'POST' && endpoint === `${prefix}/actions/workflows/ci.yml/dispatches`) {
+      records.runs.push({ head_sha: records.pull.head.sha });
+      return undefined;
+    }
     if (endpoint === 'repositories/1317851991') return structuredClone(records.repository);
     if (endpoint === `${prefix}/branches/main`) return structuredClone(records.main);
     if (endpoint === `${prefix}/pulls?state=open&base=main&per_page=100&page=1`)
       return [structuredClone(records.pull)];
     if (endpoint === `${prefix}/pulls/7`) return structuredClone(records.pull);
-    if (endpoint.startsWith(`${prefix}/compare/`)) return { behind_by: 1 };
-    if (endpoint === `${prefix}/issues/7/comments?per_page=100&page=1`)
-      return structuredClone(records.comments);
+    if (endpoint.startsWith(`${prefix}/compare/`))
+      return { behind_by: records.behind, merge_base_commit: { sha: mainSha } };
+    if (endpoint.startsWith(`${prefix}/actions/workflows/ci.yml/runs?`))
+      return { workflow_runs: structuredClone(records.runs) };
     throw new Error('Unexpected fixture request.');
   };
-  return { records, calls, request };
+  return { records, calls, request, sleep: async () => {} };
 }
 
-test('requests a bot-owned rebase once for the current main source', async () => {
+test('updates the expected bot head and dispatches CI once without bot comments', async () => {
   const dependencies = fixture();
   const result = await rebaseDependabotPullRequests(context, dependencies);
-  assert.deepEqual(result.rebased, [7]);
-  const posted = dependencies.calls.find((call) => call.method === 'POST');
-  assert.match(posted.body.body, /^@dependabot rebase/u);
-  dependencies.records.comments = [
-    { user: { login: 'github-actions[bot]', type: 'Bot' }, body: posted.body.body },
-  ];
-  assert.deepEqual((await rebaseDependabotPullRequests(context, dependencies)).rebased, []);
+  assert.deepEqual(result.updated, [7]);
+  assert.deepEqual(result.dispatched, [7]);
+  assert.deepEqual(dependencies.calls.filter((call) => call.method !== 'GET'), [
+    { method: 'PUT', endpoint: `${prefix}/pulls/7/update-branch`,
+      body: { expected_head_sha: 'b'.repeat(40) } },
+    { method: 'POST', endpoint: `${prefix}/actions/workflows/ci.yml/dispatches`,
+      body: { ref: 'dependabot/npm/update' } },
+  ]);
+  const repeated = await rebaseDependabotPullRequests(context, dependencies);
+  assert.deepEqual(repeated.updated, []);
+  assert.deepEqual(repeated.dispatched, []);
 });
 
-test('does not post rebase commands on foreign branches or human pull requests', async () => {
+test('recovers when the branch update succeeded before CI could be dispatched', async () => {
   const dependencies = fixture();
-  assert.equal(
-    (await rebaseDependabotPullRequests({ ...context, ref: 'refs/heads/feature' }, dependencies))
-      .status,
-    'skipped',
-  );
-  dependencies.records.pull.user.login = 'human';
-  assert.deepEqual((await rebaseDependabotPullRequests(context, dependencies)).rebased, []);
-  assert.equal(
-    dependencies.calls.some((call) => call.method === 'POST'),
-    false,
-  );
+  dependencies.records.behind = 0;
+  const result = await rebaseDependabotPullRequests(context, dependencies);
+  assert.deepEqual(result.updated, []);
+  assert.deepEqual(result.dispatched, [7]);
+  assert.equal(dependencies.calls.some((call) => call.method === 'PUT'), false);
+});
+
+test('does not dispatch an unconfirmed asynchronous update', async () => {
+  const dependencies = fixture();
+  dependencies.records.update = false;
+  await assert.rejects(rebaseDependabotPullRequests(context, dependencies), /not confirmed/u);
+  assert.equal(dependencies.calls.some((call) => call.method === 'POST'), false);
+});
+
+test('keeps conflicts and human pull requests out of automatic branch writes', async () => {
+  for (const kind of ['human', 'conflict', 'foreign-context']) {
+    const dependencies = fixture();
+    if (kind === 'human') dependencies.records.pull.user.login = 'human';
+    if (kind === 'conflict') dependencies.records.pull.mergeable_state = 'dirty';
+    const selected = kind === 'foreign-context'
+      ? { ...context, ref: 'refs/heads/feature' } : context;
+    await rebaseDependabotPullRequests(selected, dependencies);
+    assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
+  }
 });
