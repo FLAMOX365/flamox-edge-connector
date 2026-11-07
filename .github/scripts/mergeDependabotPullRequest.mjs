@@ -35,7 +35,10 @@ export async function mergeDependabotPullRequest(context, dependencies = {}) {
   const runId = positiveInteger(context?.runId);
   const runAttempt = positiveInteger(context?.runAttempt);
 
-  if (context?.eventName !== 'workflow_run' || runId === undefined || runAttempt === undefined)
+  const trustedOwner = context?.eventName === 'workflow_run' ||
+    (['push', 'workflow_dispatch'].includes(context?.eventName) &&
+     context?.ref === 'refs/heads/main');
+  if (!trustedOwner || runId === undefined || runAttempt === undefined)
     return skipped('unsupported-context');
 
   const boundary = dependencies.request ?? requestDependabotGitHub;
