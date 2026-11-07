@@ -44,7 +44,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Provision Windows sandbox account and WFP rules
         if: runner.os == 'Windows'
-        run: yarn exec srt windows-install
+        run: yarn exec srt windows-install --skip-profile-grant
       - name: Test Dependabot automation
         run: node --test .github/scripts/*Dependabot*.spec.mjs
       - run: yarn fmt

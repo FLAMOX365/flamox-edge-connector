@@ -5,9 +5,9 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
-"@anthropic-ai/sandbox-runtime@npm:0.0.79":
-  version: 0.0.79
-  resolution: "@anthropic-ai/sandbox-runtime@npm:0.0.79"
+"@anthropic-ai/sandbox-runtime@npm:0.0.81":
+  version: 0.0.81
+  resolution: "@anthropic-ai/sandbox-runtime@npm:0.0.81"
   dependencies:
     "@pondwader/socks5-server": "npm:^1.0.10"
     commander: "npm:^12.1.0"
@@ -15,7 +15,7 @@ __metadata:
     zod: "npm:^3.25.0"
   bin:
     srt: dist/cli.js
-  checksum: 10c0/bd5c50e1aa351c7bd322856104d78e5091d8d83c823b59cf2a1543e2fbe74f48806992d47d799fd65ed221bbdd06979c75236585a303d4c5795de74145eb4897
+  checksum: 10c0/08719d1e6dae61f4bdab2229378a7b82df84369a3ca478d7d147f52f3979112484980d9b3a32bb37157a51aaa63a5c9ee5a25cc448fc7d1f89eb66cfb0e2bfb4
   languageName: node
   linkType: hard
 
@@ -114,7 +114,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@edge-connector/host@workspace:."
   dependencies:
-    "@anthropic-ai/sandbox-runtime": "npm:0.0.79"
+    "@anthropic-ai/sandbox-runtime": "npm:0.0.81"
     "@biomejs/biome": "npm:^2.5.15"
     "@edge-connector/sdk": "workspace:*"
     "@hono/node-server": "npm:^2.1.5"

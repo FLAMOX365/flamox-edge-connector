@@ -36,7 +36,7 @@
     "check:templates": "yarn workspaces foreach --all --include '@edge-examples/*' run check"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "0.0.79",
+    "@anthropic-ai/sandbox-runtime": "0.0.81",
     "@edge-connector/sdk": "workspace:*",
     "@hono/node-server": "^2.1.5",
     "@tauri-apps/api": "2.12.4",
