@@ -19,8 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
+      actions: write
     steps:
       # No dependency installation, PR checkout, cache or artifact promotion.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -33,7 +34,7 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
 
-      - name: Refresh outdated Dependabot PRs once for the current default-branch commit
+      - name: Update Dependabot branches and request their exact CI
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
