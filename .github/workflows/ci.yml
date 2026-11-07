@@ -50,6 +50,20 @@ jobs:
       - run: yarn fmt
       - run: yarn lint
       - run: yarn check
+      - name: Measure Windows broker startup on a single fixture
+        if: runner.os == 'Windows'
+        timeout-minutes: 4
+        run: |
+          yarn build
+          trap 'git restore -- runtime/extension-host.ts' EXIT
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path = 'runtime/extension-host.ts';
+          const source = readFileSync(path, 'utf8');
+          if (!source.includes('startupTimeoutMs ?? 10_000')) throw new Error('Missing timeout target');
+          writeFileSync(path, source.replace('startupTimeoutMs ?? 10_000', 'startupTimeoutMs ?? 160_000'));
+          JS
+          node --import tsx --test --test-name-pattern='executes a declared action with scoped configuration' runtime/extension-host.spec.ts
       - run: yarn test:coverage
         timeout-minutes: 6
       - run: yarn check:templates
