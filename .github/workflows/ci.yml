@@ -51,7 +51,12 @@ jobs:
       - run: yarn lint
       - run: yarn check
       - run: yarn test:coverage
+        if: runner.os != 'Windows'
         timeout-minutes: 6
+      - name: Verify Windows sandbox and coverage
+        if: runner.os == 'Windows'
+        timeout-minutes: 22
+        run: yarn node tools/verify-windows-sandbox.ts
       - run: yarn check:templates
       - run: yarn verify:generated
       - name: Test native desktop protocol and lifecycle

@@ -3,11 +3,12 @@ import {
   VENDORED_SRT_WIN_EXE,
 } from "@anthropic-ai/sandbox-runtime";
 import { spawn, type ChildProcess } from "node:child_process";
-import { realpath, stat } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
 import { parse, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { executeCommand } from "./command.ts";
+import { windowsReadRoots } from "./windows-sandbox-roots.ts";
 import type {
   ExtensionInboundMessage,
   ExtensionOutboundMessage,
@@ -120,22 +121,8 @@ async function start(options: SandboxStart): Promise<void> {
   if (seccompPath) systemPaths.push(seccompPath);
   const readRoots =
     process.platform === "win32"
-      ? (
-          await Promise.all(
-            Array.from({ length: 26 }, async (_, index) => {
-              const root = `${String.fromCharCode(65 + index)}:\\`;
-              try {
-                await stat(root);
-                return root;
-              } catch {
-                return undefined;
-              }
-            }),
-          )
-        ).filter((path): path is string => path !== undefined)
+      ? await windowsReadRoots(directory)
       : [parse(directory).root];
-  if (!readRoots.includes(parse(directory).root))
-    readRoots.push(parse(directory).root);
   const filesystem = {
     denyRead: readRoots.map((path) => ({ path, literal: true as const })),
     allowRead: [directory, worker, executable, ...systemPaths].map((path) => ({
