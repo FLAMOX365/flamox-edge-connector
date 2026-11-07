@@ -45,6 +45,8 @@ jobs:
       - name: Provision Windows sandbox account and WFP rules
         if: runner.os == 'Windows'
         run: yarn exec srt windows-install
+      - name: Test Dependabot automation
+        run: node --test .github/scripts/*Dependabot*.spec.mjs
       - run: yarn fmt
       - run: yarn lint
       - run: yarn check
