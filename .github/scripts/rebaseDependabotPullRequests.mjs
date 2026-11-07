@@ -1,6 +1,7 @@
 // #region Imports
 
 import { resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { requestDependabotGitHub } from './requestDependabotGitHub.mjs';
 import { resolveDependabotRepository } from './resolveDependabotRepository.mjs';
@@ -14,18 +15,14 @@ const requestFailure =
   'Dependabot rebase stopped after a GitHub API request failed; inspect the workflow before retrying.';
 
 /**
- * Requests rebases only for current, same-repository Dependabot pull requests behind canonical main.
- *
- * @param context - The immutable repository identity, default branch and push or dispatch context selected by the trusted workflow.
- * @param dependencies - An optional request(method, endpoint, body) parsed-JSON REST boundary for offline tests.
- * @returns The inspected main SHA, rebased pull-request numbers and fixed skip reasons; stops if main moves.
- * @throws An Error with safe diagnostics for unavailable, malformed or unbounded API data or an unconfirmed write.
- * @remarks Reads metadata only, never pull-request files or code. Pagination is limited to 1,000 pull requests and 1,000 comments per pull request. Current ownership, head and main are checked before each command. A machine comment marker deduplicates requests for the same main SHA; the workflow must serialize runs because GitHub provides no atomic conditional comment creation. No installation, login, credential lookup or automatic retry occurs.
- *
- * @internal
+ * Updates same-repository Dependabot branches through GitHub's branch API,
+ * then explicitly dispatches CI because GITHUB_TOKEN writes do not start it.
+ * Partial completion is recoverable by inspecting the current head and its
+ * existing CI runs. Human PRs, foreign repositories and changed heads are skipped.
  */
 export async function rebaseDependabotPullRequests(context, dependencies = {}) {
   const boundary = dependencies.request ?? requestDependabotGitHub;
+  const sleep = dependencies.sleep ?? delay;
   const request = async (method, endpoint, body) => {
     try {
       return await boundary(method, endpoint, body);
@@ -34,9 +31,7 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
     }
   };
   const identity = await resolveDependabotRepository(context, request);
-
   if (!identity) return { status: 'skipped', reason: 'unsupported-repository' };
-
   if (
     !['push', 'workflow_dispatch'].includes(context?.eventName) ||
     context?.ref !== `refs/heads/${identity.defaultBranch}`
@@ -47,7 +42,6 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
   const mainPath = `${repositoryPath}/branches/${encodeURIComponent(identity.defaultBranch)}`;
   const main = await request('GET', mainPath);
   const mainSha = main?.commit?.sha;
-
   if (main?.name !== identity.defaultBranch || !shaPattern.test(mainSha ?? ''))
     return { status: 'skipped', reason: 'invalid-main' };
 
@@ -55,97 +49,89 @@ export async function rebaseDependabotPullRequests(context, dependencies = {}) {
     request,
     `${repositoryPath}/pulls?state=open&base=${encodeURIComponent(identity.defaultBranch)}`,
   );
-  const result = { status: 'completed', mainSha, rebased: [], skipped: [] };
+  const result = { status: 'completed', mainSha, updated: [], dispatched: [], skipped: [] };
   const seen = new Set();
   const skip = (number, reason) => result.skipped.push({ number, reason });
-  const marker = `<!-- flamox-edge-connector-dependabot-rebase:${mainSha} -->`;
 
   for (const listed of pullRequests) {
     const number = listed?.number;
-
     if (!Number.isSafeInteger(number) || number < 1 || seen.has(number)) continue;
-
     seen.add(number);
-
     if (!eligiblePullRequest(listed, number, identity)) {
       skip(number, 'ineligible-pull-request');
-
       continue;
     }
 
     const pullRequestPath = `${repositoryPath}/pulls/${number}`;
-    const pullRequest = await request('GET', pullRequestPath);
-
+    let pullRequest = await request('GET', pullRequestPath);
     if (!samePullRequest(pullRequest, listed, identity)) {
       skip(number, 'pull-request-changed');
-
       continue;
     }
-
     const comparison = await request(
-      'GET',
-      `${repositoryPath}/compare/${mainSha}...${pullRequest.head.sha}`,
+      'GET', `${repositoryPath}/compare/${mainSha}...${pullRequest.head.sha}`,
     );
-
     if (!Number.isSafeInteger(comparison?.behind_by) || comparison.behind_by < 0) {
       skip(number, 'unknown-comparison');
-
       continue;
     }
-
-    if (!needsRebase(pullRequest, comparison)) {
-      skip(number, 'up-to-date');
-
-      continue;
-    }
-
-    const commentsPath = `${repositoryPath}/issues/${number}/comments`;
-    const comments = await pages(request, commentsPath);
-
-    if (
-      comments.some(
-        (comment) =>
-          comment?.user?.login === 'github-actions[bot]' &&
-          comment?.user?.type === 'Bot' &&
-          typeof comment.body === 'string' &&
-          comment.body.includes(marker),
-      )
-    ) {
-      skip(number, 'already-requested');
-
+    if (pullRequest.mergeable_state === 'dirty') {
+      skip(number, 'merge-conflict');
       continue;
     }
 
     const currentMain = await request('GET', mainPath);
-
     if (currentMain?.name !== identity.defaultBranch || currentMain?.commit?.sha !== mainSha)
       return { ...result, status: 'stopped', reason: 'main-changed' };
 
-    const currentPullRequest = await request('GET', pullRequestPath);
-
-    if (!samePullRequest(currentPullRequest, pullRequest, identity)) {
-      skip(number, 'pull-request-changed');
-
-      continue;
-    }
-
-    if (!needsRebase(currentPullRequest, comparison)) {
-      skip(number, 'up-to-date');
-
-      continue;
-    }
-
-    const body = `@dependabot rebase\n\n${marker}`;
-    const posted = await request('POST', commentsPath, { body });
-
-    if (!Number.isSafeInteger(posted?.id) || posted.id < 1 || posted.body !== body)
-      throw new Error(
-        'GitHub did not confirm the Dependabot rebase command; inspect the pull request before retrying.',
+    if (comparison.behind_by > 0) {
+      const original = pullRequest;
+      const current = await request('GET', pullRequestPath);
+      if (!samePullRequest(current, original, identity)) {
+        skip(number, 'pull-request-changed');
+        continue;
+      }
+      await request('PUT', `${pullRequestPath}/update-branch`, {
+        expected_head_sha: original.head.sha,
+      });
+      // GitHub accepts the update asynchronously. Never dispatch the old head.
+      for (let attempt = 0; attempt < 10; attempt++) {
+        pullRequest = await request('GET', pullRequestPath);
+        if (!eligiblePullRequest(pullRequest, number, identity))
+          throw new Error('Dependabot pull request changed during its branch update.');
+        if (pullRequest.head.sha !== original.head.sha) break;
+        await sleep(1000);
+      }
+      const updated = await request(
+        'GET', `${repositoryPath}/compare/${mainSha}...${pullRequest.head.sha}`,
       );
+      if (pullRequest.head.sha === original.head.sha ||
+          updated?.behind_by !== 0 || updated?.merge_base_commit?.sha !== mainSha)
+        throw new Error('GitHub has not confirmed an up-to-date Dependabot branch.');
+      result.updated.push(number);
+    }
 
-    result.rebased.push(number);
+    const runs = await request('GET',
+      `${repositoryPath}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(pullRequest.head.ref)}&head_sha=${pullRequest.head.sha}&per_page=100`,
+    );
+    if (!Array.isArray(runs?.workflow_runs)) throw new Error('Invalid CI run metadata.');
+    if (runs.workflow_runs.some((run) => run.head_sha === pullRequest.head.sha)) {
+      skip(number, 'verification-already-requested');
+      continue;
+    }
+    const latest = await request('GET', pullRequestPath);
+    const latestMain = await request('GET', mainPath);
+    if (!samePullRequest(latest, pullRequest, identity)) {
+      skip(number, 'pull-request-changed');
+      continue;
+    }
+    if (latestMain?.commit?.sha !== mainSha)
+      return { ...result, status: 'stopped', reason: 'main-changed' };
+    await request('POST', `${repositoryPath}/actions/workflows/ci.yml/dispatches`, {
+      ref: pullRequest.head.ref,
+    });
+    result.dispatched.push(number);
   }
-
   return result;
 }
 
@@ -162,6 +148,7 @@ function eligiblePullRequest(value, number, identity) {
     value?.base?.repo?.id === identity.id &&
     value?.base?.repo?.full_name === identity.fullName &&
     value?.base?.ref === identity.defaultBranch &&
+    typeof value?.head?.ref === 'string' && value.head.ref.length > 0 &&
     shaPattern.test(value?.head?.sha ?? '') &&
     shaPattern.test(value?.base?.sha ?? '')
   );
@@ -171,12 +158,9 @@ function samePullRequest(value, previous, identity) {
   return (
     eligiblePullRequest(value, previous.number, identity) &&
     value.head.sha === previous.head.sha &&
+    value.head.ref === previous.head.ref &&
     value.base.sha === previous.base.sha
   );
-}
-
-function needsRebase(pullRequest, comparison) {
-  return comparison.behind_by > 0 || pullRequest.mergeable_state === 'dirty';
 }
 
 async function pages(request, endpoint) {
