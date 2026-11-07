@@ -566,6 +566,7 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
 }, async (t) => {
   const directory = await makeTempDirectory();
   const releases: ((value: JsonValue) => void)[] = [];
+  const nextEntered = Promise.withResolvers<void>();
   let allEntered!: () => void;
   const entered = new Promise<void>((resolve) => {
     allEntered = resolve;
@@ -591,6 +592,7 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
           new Promise((resolve) => {
             releases.push(resolve);
             if (releases.length === 32) allEntered();
+            if (releases.length === 33) nextEntered.resolve();
           }),
       },
     },
@@ -599,13 +601,14 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
     host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
+  await host.start();
   const executions = Array.from({ length: 32 }, (_, index) =>
     host.execute(`parallel-${index}`, "inspect", null, 10_000),
   );
   // Attach handlers before waiting so a failed startup cannot produce unhandled rejections.
   const completed = Promise.all(executions);
   void completed.catch(() => undefined);
-  await entered;
+  await Promise.race([entered, completed]);
   await assertRejects(
     () => host.execute("overflow", "inspect", null),
     Error,
@@ -614,8 +617,7 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
   releases.forEach((resolve) => resolve({ displayed: true }));
   assertEquals((await completed).length, 32);
   const next = host.execute("after-completion", "inspect", null);
-  while (releases.length < 33)
-    await new Promise((resolve) => setTimeout(resolve, 5));
+  await Promise.race([nextEntered.promise, next]);
   releases[32]!({ displayed: true });
   assertEquals(await next, { displayed: true });
 });
@@ -655,12 +657,13 @@ test("ExtensionHost stops pending work and ignores a late host reply after resta
     host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
+  await host.start();
   const pending = assertRejects(
     () => host.execute("stopped", "inspect", true),
     Error,
     "process stopped",
   );
-  await called;
+  await Promise.race([called, pending]);
   host.stop();
   await pending;
   assertEquals(await host.execute("restarted", "inspect", false), "fresh");
