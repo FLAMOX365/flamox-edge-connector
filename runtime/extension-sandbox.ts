@@ -27,6 +27,7 @@ type SandboxStart = {
 };
 
 const maximumMessageBytes = 16 * 1024 * 1024;
+const initialDirectory = process.cwd();
 let child: ChildProcess | undefined;
 let input: Writable | undefined;
 let inputServer: Server | undefined;
@@ -34,34 +35,40 @@ let starting: Promise<void> | undefined;
 let stopping = false;
 let protocolFailed = false;
 
-process.on("message", (value: SandboxStart | ExtensionInboundMessage) => {
-  if (value.type === "sandbox-start") {
-    if (starting) return void stop();
-    starting = start(value);
-    void starting.catch(async (error: unknown) => {
-      await send({
-        type: "error",
-        executionId: null,
-        code: "EXTENSION_SANDBOX_UNAVAILABLE",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Extension isolation is unavailable.",
-        errorName: "SandboxError",
+process.on(
+  "message",
+  (
+    value: SandboxStart | ExtensionInboundMessage | { type: "sandbox-stop" },
+  ) => {
+    if (value.type === "sandbox-stop") return void stop();
+    if (value.type === "sandbox-start") {
+      if (starting) return void stop();
+      starting = start(value);
+      void starting.catch(async (error: unknown) => {
+        await send({
+          type: "error",
+          executionId: null,
+          code: "EXTENSION_SANDBOX_UNAVAILABLE",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Extension isolation is unavailable.",
+          errorName: "SandboxError",
+        });
+        await stop();
       });
-      await stop();
-    });
-    return;
-  }
-  void starting?.then(
-    () => {
-      const line = `${JSON.stringify(value)}\n`;
-      if (Buffer.byteLength(line) > maximumMessageBytes) return void stop();
-      input?.write(line);
-    },
-    () => undefined,
-  );
-});
+      return;
+    }
+    void starting?.then(
+      () => {
+        const line = `${JSON.stringify(value)}\n`;
+        if (Buffer.byteLength(line) > maximumMessageBytes) return void stop();
+        input?.write(line);
+      },
+      () => undefined,
+    );
+  },
+);
 
 process.once("disconnect", () => void stop());
 process.once("SIGTERM", () => void stop());
@@ -343,12 +350,22 @@ function send(value: ExtensionOutboundMessage): Promise<void> {
 async function stop(): Promise<void> {
   if (stopping) return;
   stopping = true;
+  const running = child;
+  const closed =
+    running && running.exitCode === null && running.signalCode === null
+      ? once(running, "close").catch(() => undefined)
+      : Promise.resolve();
+  const terminate = setTimeout(() => running?.kill("SIGKILL"), 500);
+  const force = setTimeout(() => process.exit(1), 10_000);
+  force.unref();
+  input?.end();
   inputServer?.close();
   inputServer?.closeAllConnections();
-  child?.kill("SIGKILL");
-  const force = setTimeout(() => process.exit(1), 2_000);
-  force.unref();
   try {
+    await closed;
+    clearTimeout(terminate);
+    // Windows keeps the working directory locked for the life of the process.
+    process.chdir(initialDirectory);
     await SandboxManager.reset();
   } finally {
     process.exit(0);

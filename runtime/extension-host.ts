@@ -40,6 +40,7 @@ export class ExtensionHost {
   readonly #options: ExtensionHostOptions;
   readonly #pending = new Map<string, PendingExecution>();
   #worker: ChildProcess | undefined;
+  #stopping: Promise<void> = Promise.resolve();
   #ready: Promise<void> | undefined;
   #resolveReady: (() => void) | undefined;
   #rejectReady: ((reason: unknown) => void) | undefined;
@@ -61,6 +62,7 @@ export class ExtensionHost {
     this.#ready = ready;
     void ready.catch(() => undefined);
     try {
+      await this.#stopping;
       const extensionDirectory = await realpath(
         this.#options.extensionDirectory,
       );
@@ -127,7 +129,8 @@ export class ExtensionHost {
           this.fail(
             new Error("Extension sandbox did not become ready in time."),
           ),
-        this.#options.startupTimeoutMs ?? 10_000,
+        this.#options.startupTimeoutMs ??
+          (process.platform === "win32" ? 660_000 : 10_000),
       );
       try {
         await ready;
@@ -225,10 +228,11 @@ export class ExtensionHost {
     return output;
   }
 
-  stop(): void {
+  stop(): Promise<void> {
     this.fail(
       new RuntimeError("EXTENSION_STOPPED", "Extension process stopped."),
     );
+    return this.#stopping;
   }
 
   private handleMessage(value: unknown): void {
@@ -364,8 +368,9 @@ export class ExtensionHost {
     this.#rejectReady?.(error);
     this.#resolveReady = undefined;
     this.#rejectReady = undefined;
-    this.#worker?.kill("SIGTERM");
+    const worker = this.#worker;
     this.#worker = undefined;
+    if (worker) this.#stopping = stopWorker(worker);
     this.failPending(error);
   }
 
@@ -376,6 +381,23 @@ export class ExtensionHost {
     }
     this.#pending.clear();
   }
+}
+
+function stopWorker(worker: ChildProcess): Promise<void> {
+  return new Promise((resolve) => {
+    const force = setTimeout(() => worker.kill("SIGKILL"), 15_000);
+    worker.once("close", () => {
+      clearTimeout(force);
+      resolve();
+    });
+    if (worker.connected) {
+      worker.send({ type: "sandbox-stop" }, (error) => {
+        if (error) worker.kill("SIGKILL");
+      });
+    } else {
+      worker.kill("SIGKILL");
+    }
+  });
 }
 
 function validMessage(value: unknown): value is ExtensionOutboundMessage {

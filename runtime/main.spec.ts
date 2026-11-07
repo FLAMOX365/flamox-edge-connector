@@ -230,7 +230,7 @@ test("a naked runtime rejects arbitrary requests and trusts no extension", async
       "not active",
     );
   } finally {
-    bundle.extensionManager.stop();
+    await bundle.extensionManager.stop();
     await fs.rm(dir, { recursive: true });
   }
 });

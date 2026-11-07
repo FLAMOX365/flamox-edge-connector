@@ -152,7 +152,7 @@ export async function validateProject(
     try {
       await host.start();
     } finally {
-      host.stop();
+      await host.stop();
     }
   } finally {
     await fs.rm(prepared.directory, { recursive: true });
@@ -331,7 +331,7 @@ export async function buildProject(
     try {
       await host.start();
     } finally {
-      host.stop();
+      await host.stop();
     }
     await fs.rm(output, { recursive: true }).catch((error) => {
       if (!isNotFound(error)) throw error;
@@ -466,7 +466,7 @@ export async function executeDevelopmentAction(options: {
       options.input ?? null,
     );
   } finally {
-    host.stop();
+    await host.stop();
     await fs.rm(prepared.directory, { recursive: true });
   }
 }

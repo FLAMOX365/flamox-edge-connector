@@ -40,6 +40,13 @@ Sandbox Runtime upgrade changes the setup version. Missing prerequisites
 produce an extension activation error. The connector never relaxes enforcement
 or executes the package without isolation.
 
+The first Windows sandbox start can take several minutes while the native
+broker applies drive ACLs. Windows allows up to eleven minutes for this cold
+start. Later workers reuse the active rules. Worker input uses an authenticated
+loopback stream through its private proxy because the Windows broker consumes
+its own standard input. Shutdown waits for worker exit before releasing files
+or removing an installed package.
+
 The container installs Linux prerequisites and runs as `node`. Its host's
 seccomp/AppArmor profile must also allow the required nested namespaces. A
 successful image build is not proof that extension execution works under the
