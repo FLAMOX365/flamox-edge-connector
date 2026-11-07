@@ -5,7 +5,8 @@ import {
 import { spawn, type ChildProcess } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
-import { parse, join } from "node:path";
+import { parse, join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { executeCommand } from "./command.ts";
 import type {
   ExtensionInboundMessage,
@@ -99,6 +100,26 @@ async function start(options: SandboxStart): Promise<void> {
           ];
   if (process.platform === "darwin")
     systemPaths.push(...(await linkedLibraries(executable)));
+  // Linux hides the installation directory. Re-expose only the trusted
+  // seccomp executable that the wrapper needs before launching Node.
+  const seccompPath =
+    process.platform === "linux"
+      ? await realpath(
+          join(
+            dirname(
+              fileURLToPath(
+                import.meta.resolve("@anthropic-ai/sandbox-runtime"),
+              ),
+            ),
+            "..",
+            "vendor",
+            "seccomp",
+            process.arch,
+            "apply-seccomp",
+          ),
+        )
+      : undefined;
+  if (seccompPath) systemPaths.push(seccompPath);
   const readRoots =
     process.platform === "win32"
       ? (
@@ -117,6 +138,23 @@ async function start(options: SandboxStart): Promise<void> {
       : [parse(directory).root];
   if (!readRoots.includes(parse(directory).root))
     readRoots.push(parse(directory).root);
+  const filesystem = {
+    denyRead: readRoots.map((path) => ({ path, literal: true as const })),
+    allowRead: [directory, worker, executable, ...systemPaths].map((path) => ({
+      path,
+      literal: true as const,
+    })),
+    allowWrite: [],
+    // SRT's interactive-shell defaults include a shared temporary directory.
+    // Extension code has no writable filesystem; do not inherit that grant.
+    denyWrite:
+      process.platform === "win32"
+        ? []
+        : ["/tmp/claude", "/private/tmp/claude"].map((path) => ({
+            path,
+            literal: true as const,
+          })),
+  };
   await SandboxManager.initialize(
     {
       network: {
@@ -125,22 +163,8 @@ async function start(options: SandboxStart): Promise<void> {
         allowLocalBinding: false,
         allowUnixSockets: [],
       },
-      filesystem: {
-        denyRead: readRoots.map((path) => ({ path, literal: true })),
-        allowRead: [directory, worker, executable, ...systemPaths].map(
-          (path) => ({ path, literal: true }),
-        ),
-        allowWrite: [],
-        // SRT's interactive-shell defaults include a shared temporary directory.
-        // Extension code has no writable filesystem; do not inherit that grant.
-        denyWrite:
-          process.platform === "win32"
-            ? []
-            : ["/tmp/claude", "/private/tmp/claude"].map((path) => ({
-                path,
-                literal: true,
-              })),
-      },
+      filesystem,
+      ...(seccompPath ? { seccomp: { applyPath: seccompPath } } : {}),
       ...(process.platform === "win32"
         ? { windows: { srtWin: { path: VENDORED_SRT_WIN_EXE } } }
         : {}),
@@ -163,10 +187,26 @@ async function start(options: SandboxStart): Promise<void> {
     worker,
   ];
   const command = `${process.platform === "win32" ? "& " : ""}${args.map(quoteArgument).join(" ")}`;
+  // The read mask can cover /tmp after the wrapper's initial bind mounts.
+  // Restore only the two sockets for this extension's authenticated proxy.
+  const proxySockets = [
+    SandboxManager.getLinuxHttpSocketPath(),
+    SandboxManager.getLinuxSocksSocketPath(),
+  ].filter((path) => path !== undefined);
   const wrapped = await SandboxManager.wrapWithSandboxArgv(
     command,
     process.platform === "win32" ? "powershell" : undefined,
-    undefined,
+    proxySockets.length > 0
+      ? {
+          filesystem: {
+            ...filesystem,
+            allowRead: [
+              ...filesystem.allowRead,
+              ...proxySockets.map((path) => ({ path, literal: true as const })),
+            ],
+          },
+        }
+      : undefined,
     undefined,
     directory,
   );
