@@ -472,7 +472,10 @@ export async function executeDevelopmentAction(options: {
 }
 
 async function installProjectDependencies(directory: string): Promise<void> {
-  const output = await executeCommand("yarn", ["install"], { cwd: directory });
+  // A new project has no lockfile yet, even when its scaffolder runs in CI.
+  const output = await executeCommand("yarn", ["install", "--no-immutable"], {
+    cwd: directory,
+  });
   if (!output.success) {
     throw commandError("Dependency installation", output);
   }
