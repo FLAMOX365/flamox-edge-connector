@@ -182,15 +182,18 @@ export function parsePolicyRules(
 }
 
 /**
- * Receives tenant-scoped rules from authenticated Desired State. An optional
- * local policy remains an additional customer-owned restriction.
+ * Uses local rules offline and tenant-scoped rules when management is configured.
+ * In managed mode a local policy remains an additional customer-owned restriction.
  */
 export class ManagedExtensionPolicy implements ExtensionPolicy {
   readonly #local?: StaticExtensionPolicy;
+  readonly #managedMode: boolean;
   #managed = StaticExtensionPolicy.denyAll();
 
-  constructor(local?: StaticExtensionPolicy) {
-    this.#local = local;
+  constructor(local?: StaticExtensionPolicy, managed = true) {
+    this.#managedMode = managed;
+    this.#local =
+      local ?? (managed ? undefined : StaticExtensionPolicy.denyAll());
   }
 
   updateManagedRules(value: unknown): void {
@@ -202,7 +205,8 @@ export class ManagedExtensionPolicy implements ExtensionPolicy {
     grant: ExtensionGrant,
     configuration: Readonly<Record<string, JsonValue>> = {},
   ): void {
-    this.#managed.authorize(manifest, grant, configuration);
+    if (this.#managedMode)
+      this.#managed.authorize(manifest, grant, configuration);
     this.#local?.authorize(manifest, grant, configuration);
   }
 }

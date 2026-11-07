@@ -105,6 +105,13 @@ export class ControlPlaneClient {
     });
   }
 
+  async heartbeat(signal: AbortSignal): Promise<void> {
+    await this.requestJson("edge/connectors/control/heartbeat", {
+      method: "POST",
+      signal,
+    });
+  }
+
   async getCommands(afterSequence: number): Promise<ConnectorCommandBatch> {
     return parseCommandBatch(
       await this.requestJson(
@@ -152,7 +159,9 @@ export class ControlPlaneClient {
     const response = await this.fetcher(url, {
       ...init,
       headers,
-      signal: AbortSignal.timeout(30_000),
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
+        : AbortSignal.timeout(30_000),
     });
     if (!response.ok) {
       throw new Error(

@@ -62,6 +62,7 @@ export class ExtensionManager {
   readonly #options: ExtensionManagerOptions;
   readonly #logger: RuntimeLogger;
   readonly #active = new Map<string, ExtensionHost>();
+  #stopping: Promise<void> = Promise.resolve();
   #states = new Map<string, InstalledExtensionState>();
   #releaseLock: (() => void) | undefined;
 
@@ -71,6 +72,7 @@ export class ExtensionManager {
   }
 
   async initialize(): Promise<void> {
+    await this.#stopping;
     if (this.#releaseLock) {
       throw new Error("Extension manager is already initialized.");
     }
@@ -238,9 +240,9 @@ export class ExtensionManager {
         this.#active.set(manifest.id, candidate);
       } else {
         this.#active.delete(manifest.id);
-        candidate?.stop();
+        await candidate?.stop();
       }
-      previousHost?.stop();
+      await previousHost?.stop();
       // The transaction is committed. The outer failure cleanup must no
       // longer stop or delete the newly active release.
       candidate = undefined;
@@ -252,7 +254,7 @@ export class ExtensionManager {
       );
       return state;
     } catch (error) {
-      candidate?.stop();
+      await candidate?.stop();
       if (createdPackagePath) {
         try {
           await fs.rm(createdPackagePath, { recursive: true });
@@ -297,10 +299,10 @@ export class ExtensionManager {
       await this.persist();
     } catch (error) {
       this.#states.set(extensionId, state);
-      host.stop();
+      await host.stop();
       throw error;
     }
-    this.#active.get(extensionId)?.stop();
+    await this.#active.get(extensionId)?.stop();
     this.#active.set(extensionId, host);
     return activeState;
   }
@@ -328,7 +330,7 @@ export class ExtensionManager {
       this.#states.set(extensionId, state);
       throw error;
     }
-    activeHost?.stop();
+    await activeHost?.stop();
     this.#active.delete(extensionId);
     return disabled;
   }
@@ -357,7 +359,7 @@ export class ExtensionManager {
         await this.runLifecycle(candidate, manifest, "configure", null);
         await this.runHealth(candidate, manifest);
       } catch (error) {
-        candidate.stop();
+        await candidate.stop();
         throw error;
       }
     }
@@ -377,12 +379,12 @@ export class ExtensionManager {
       await this.persist();
     } catch (error) {
       this.#states.set(extensionId, previous);
-      candidate?.stop();
+      await candidate?.stop();
       throw error;
     }
     const previousHost = this.#active.get(extensionId);
     if (candidate) this.#active.set(extensionId, candidate);
-    previousHost?.stop();
+    await previousHost?.stop();
     return updated;
   }
 
@@ -428,13 +430,13 @@ export class ExtensionManager {
       await this.persist();
     } catch (error) {
       this.#states.set(extensionId, previous);
-      candidate?.stop();
+      await candidate?.stop();
       throw error;
     }
     const previousHost = this.#active.get(extensionId);
     if (candidate) this.#active.set(extensionId, candidate);
     else this.#active.delete(extensionId);
-    previousHost?.stop();
+    await previousHost?.stop();
     return rolledBack;
   }
 
@@ -455,7 +457,7 @@ export class ExtensionManager {
         }
         await this.runLifecycle(lifecycleHost, manifest, "uninstall", null);
       } finally {
-        if (temporaryHost) lifecycleHost.stop();
+        if (temporaryHost) await lifecycleHost.stop();
       }
     }
     this.#states.delete(extensionId);
@@ -465,7 +467,7 @@ export class ExtensionManager {
       this.#states.set(extensionId, state);
       throw error;
     }
-    this.#active.get(extensionId)?.stop();
+    await this.#active.get(extensionId)?.stop();
     this.#active.delete(extensionId);
     const packagePaths = new Set([
       state.packagePath,
@@ -499,12 +501,14 @@ export class ExtensionManager {
     return host.execute(requestId, action, input);
   }
 
-  stop(): void {
-    for (const host of this.#active.values()) {
-      host.stop();
-    }
+  stop(): Promise<void> {
+    const stopped = [
+      this.#stopping,
+      ...[...this.#active.values()].map((host) => host.stop()),
+    ];
     this.#active.clear();
-    this.releaseLock();
+    this.#stopping = Promise.all(stopped).then(() => this.releaseLock());
+    return this.#stopping;
   }
 
   private async createVerifiedHost(
@@ -529,7 +533,7 @@ export class ExtensionManager {
       await this.runHealth(host, manifest);
       return host;
     } catch (error) {
-      host.stop();
+      await host.stop();
       throw error;
     }
   }
@@ -648,7 +652,7 @@ export class ExtensionManager {
         update: 10_000,
         retries: 0,
         onCompromised: (error) => {
-          this.stop();
+          void this.stop();
           throw error;
         },
       });
