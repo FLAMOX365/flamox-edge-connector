@@ -269,12 +269,7 @@ export async function testProject(directory: string): Promise<void> {
   delete environment.NODE_TEST_CONTEXT;
   const status = await executeCommand(
     process.execPath,
-    [
-      "--import",
-      import.meta.resolve("tsx"),
-      "--test",
-      ...testFiles,
-    ],
+    ["--import", import.meta.resolve("tsx"), "--test", ...testFiles],
     { cwd: directory, inherit: true, env: environment },
   );
   if (!status.success) {
