@@ -70,12 +70,10 @@ async function start(options: SandboxStart): Promise<void> {
   const directory = await realpath(options.extensionDirectory);
   // Only immutable code and public operating-system runtime files are readable.
   // Node's narrower fs permissions are additional protection, not the sandbox.
+  // Windows already provides its system runtime through the sandbox account's OS ACLs.
   const systemPaths =
     process.platform === "win32"
-      ? [
-          join(process.env.SystemRoot ?? "C:\\Windows", "System32"),
-          join(process.env.SystemRoot ?? "C:\\Windows", "WinSxS"),
-        ]
+      ? []
       : process.platform === "darwin"
         ? [
             "/System/Library",
