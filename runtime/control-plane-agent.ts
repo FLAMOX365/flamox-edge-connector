@@ -48,6 +48,23 @@ export class ControlPlaneAgent {
   ) {}
 
   async run(signal: AbortSignal): Promise<void> {
+    await Promise.all([this.synchronize(signal), this.sendHeartbeats(signal)]);
+  }
+
+  private async sendHeartbeats(signal: AbortSignal): Promise<void> {
+    while (!signal.aborted) {
+      try {
+        await this.client.heartbeat(signal);
+      } catch (error) {
+        if (!signal.aborted) {
+          this.logger.error("Control-plane heartbeat failed", error);
+        }
+      }
+      await delay(30_000, signal);
+    }
+  }
+
+  private async synchronize(signal: AbortSignal): Promise<void> {
     while (!signal.aborted) {
       try {
         await this.runOnce();

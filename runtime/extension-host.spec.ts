@@ -62,7 +62,7 @@ test("ExtensionHost executes a declared action with scoped configuration and sec
       "not declared",
     );
   } finally {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true });
   }
 });
@@ -106,7 +106,7 @@ test("ExtensionHost isolates host files, writes, subprocesses and the parent env
       "private-host-file",
     );
   } finally {
-    host.stop();
+    await host.stop();
     if (original === undefined) delete process.env[sentinelName];
     else process.env[sentinelName] = original;
     await fs.rm(directory, { recursive: true, force: true });
@@ -160,7 +160,7 @@ test("ExtensionHost enforces exact network ports and prevents direct socket bypa
     assertEquals(allowedRequests, 1);
     assertEquals(deniedRequests, 0);
   } finally {
-    host.stop();
+    await host.stop();
     allowed.closeAllConnections();
     denied.closeAllConnections();
     await Promise.all([
@@ -185,7 +185,7 @@ test("ExtensionHost terminates infinite execution and recovers in a fresh sandbo
     );
     assertEquals(await host.execute("recover-1", "inspect", null), "recovered");
   } finally {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
@@ -239,7 +239,7 @@ test("ExtensionHost gives native TCP drivers only the grant-filtered SOCKS conne
     );
     assertEquals(deniedConnections, 0);
   } finally {
-    host.stop();
+    await host.stop();
     await Promise.all([
       new Promise<void>((resolve) => allowed.close(() => resolve())),
       new Promise<void>((resolve) => denied.close(() => resolve())),
@@ -265,7 +265,7 @@ test("ExtensionHost shares one startup between concurrent executions", async () 
       [1, 2],
     );
   } finally {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
@@ -359,7 +359,7 @@ test("ExtensionHost brokers only declared host capabilities", async () => {
     );
     assertEquals(calls, [{ title: "Hello", message: "World" }]);
   } finally {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true });
   }
 });
@@ -375,7 +375,7 @@ for (const actions of [
       `export default { actions: ${actions} };`,
     );
     t.after(async () => {
-      host.stop();
+      await host.stop();
       await fs.rm(directory, { recursive: true, force: true });
     });
     await assertRejects(() => host.start(), Error, "initialization failed");
@@ -395,7 +395,7 @@ for (const value of [
       `export default { actions: { inspect: (_context, input) => input ? ${value} : { healthy: true } } };`,
     );
     t.after(async () => {
-      host.stop();
+      await host.stop();
       await fs.rm(directory, { recursive: true, force: true });
     });
     await assertRejects(
@@ -446,7 +446,7 @@ for (const denied of ["manifest", "grant", "provider"] as const) {
       },
     );
     t.after(async () => {
-      host.stop();
+      await host.stop();
       await fs.rm(directory, { recursive: true, force: true });
     });
     await assertRejects(
@@ -506,7 +506,7 @@ test("ExtensionHost validates signed input before resolving secrets or executing
     },
   );
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
   const invalidInputs: JsonValue[] = [
@@ -546,7 +546,7 @@ test("ExtensionHost filters an overbroad secret provider and keeps simultaneous 
     },
   );
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
   assertEquals(
@@ -566,6 +566,7 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
 }, async (t) => {
   const directory = await makeTempDirectory();
   const releases: ((value: JsonValue) => void)[] = [];
+  const nextEntered = Promise.withResolvers<void>();
   let allEntered!: () => void;
   const entered = new Promise<void>((resolve) => {
     allEntered = resolve;
@@ -591,21 +592,23 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
           new Promise((resolve) => {
             releases.push(resolve);
             if (releases.length === 32) allEntered();
+            if (releases.length === 33) nextEntered.resolve();
           }),
       },
     },
   );
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
+  await host.start();
   const executions = Array.from({ length: 32 }, (_, index) =>
     host.execute(`parallel-${index}`, "inspect", null, 10_000),
   );
   // Attach handlers before waiting so a failed startup cannot produce unhandled rejections.
   const completed = Promise.all(executions);
   void completed.catch(() => undefined);
-  await entered;
+  await Promise.race([entered, completed]);
   await assertRejects(
     () => host.execute("overflow", "inspect", null),
     Error,
@@ -614,8 +617,7 @@ test("ExtensionHost bounds concurrent executions and releases capacity after com
   releases.forEach((resolve) => resolve({ displayed: true }));
   assertEquals((await completed).length, 32);
   const next = host.execute("after-completion", "inspect", null);
-  while (releases.length < 33)
-    await new Promise((resolve) => setTimeout(resolve, 5));
+  await Promise.race([nextEntered.promise, next]);
   releases[32]!({ displayed: true });
   assertEquals(await next, { displayed: true });
 });
@@ -652,16 +654,17 @@ test("ExtensionHost stops pending work and ignores a late host reply after resta
     },
   );
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
+  await host.start();
   const pending = assertRejects(
     () => host.execute("stopped", "inspect", true),
     Error,
     "process stopped",
   );
-  await called;
-  host.stop();
+  await Promise.race([called, pending]);
+  await host.stop();
   await pending;
   assertEquals(await host.execute("restarted", "inspect", false), "fresh");
   release({ displayed: true });
@@ -704,8 +707,8 @@ test("ExtensionHost enforces network grants independently across simultaneous sa
     `127.0.0.1:${redirectPort}`,
   ]);
   t.after(async () => {
-    first.stop();
-    second.stop();
+    await first.stop();
+    await second.stop();
     protectedServer.closeAllConnections();
     redirectServer.closeAllConnections();
     await Promise.all([
@@ -748,7 +751,7 @@ test("ExtensionHost caps host calls per execution before invoking more privilege
     },
   });
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
   const output = (await host.execute("bounded", "inspect", null)) as {
@@ -774,7 +777,7 @@ for (const frame of [
     const source = `import { writeSync } from "node:fs"; export default { actions: { inspect: (_context, input) => { if (input) writeSync(process.platform === "win32" ? 1 : 3, ${JSON.stringify(`${frame}\n`)}); return "healthy"; } } };`;
     const host = await isolationHost(directory, source);
     t.after(async () => {
-      host.stop();
+      await host.stop();
       await fs.rm(directory, { recursive: true, force: true });
     });
     await assertRejects(() => host.execute("forged", "inspect", true));
@@ -789,7 +792,7 @@ test("ExtensionHost bounds request and result frames and allows a fresh valid ex
     'export default { actions: { inspect: (_context, input) => input === true ? "x".repeat(17 * 1024 * 1024) : "healthy" } };',
   );
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
   await assertRejects(
@@ -824,7 +827,7 @@ test("ExtensionHost terminates hung initialization and can restart after a corre
     { startupTimeoutMs: process.platform === "win32" ? 10_000 : 2_000 },
   );
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
   await assertRejects(() => host.start(), Error, "did not become ready");
@@ -859,7 +862,7 @@ test("ExtensionHost rejects outputs violating the signed schema without coercion
     },
   });
   t.after(async () => {
-    host.stop();
+    await host.stop();
     await fs.rm(directory, { recursive: true, force: true });
   });
   await assertRejects(

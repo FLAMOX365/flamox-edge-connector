@@ -209,7 +209,7 @@ export async function runExtensionCli(args: readonly string[]): Promise<void> {
         invalidUsage();
     }
   } finally {
-    manager.stop();
+    await manager.stop();
   }
 }
 

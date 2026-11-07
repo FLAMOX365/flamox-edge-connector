@@ -84,9 +84,10 @@ export class ConnectorHost {
     this.finished = Promise.all(tasks).then(() => undefined);
   }
 
-  stop(): void {
-    this.bundle.extensionManager.stop();
+  stop(): Promise<void> {
+    const stopped = this.bundle.extensionManager.stop();
     this.abortController.abort();
+    return stopped;
   }
 }
 
@@ -103,7 +104,10 @@ export async function createManagedExtensionRuntime(
       ? await readTrustedPublishersFile(config.trustedPublishersFile)
       : [],
   );
-  const policy = new ManagedExtensionPolicy(localPolicy);
+  const policy = new ManagedExtensionPolicy(
+    localPolicy,
+    Boolean(config.managementUrl),
+  );
   const secrets = new ManagedExtensionSecretProvider(
     new EnvironmentExtensionSecretProvider(),
   );
@@ -258,7 +262,7 @@ export async function startConnectorHost(
       (socket) => bundle.runtime.attachWebSocket(socket),
     );
   } catch (error) {
-    bundle.extensionManager.stop();
+    await bundle.extensionManager.stop();
     throw error;
   }
   const tasks: Promise<void>[] = [
@@ -441,7 +445,7 @@ if (import.meta.main) {
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    host.stop();
+    void host.stop();
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

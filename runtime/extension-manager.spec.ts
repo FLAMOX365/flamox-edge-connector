@@ -109,7 +109,7 @@ test("ExtensionManager installs, executes, updates and removes an isolated exten
     await manager.uninstall("system.diagnostics");
     assertEquals(manager.list(), []);
   } finally {
-    manager.stop();
+    await manager.stop();
     await fs.rm(root, { recursive: true });
   }
 });
@@ -148,7 +148,7 @@ test("ExtensionManager preserves the active release when candidate health fails"
       { version: "healthy" },
     );
   } finally {
-    manager.stop();
+    await manager.stop();
     await fs.rm(root, { recursive: true });
   }
 });
@@ -161,8 +161,8 @@ test("ExtensionManager prevents concurrent ownership of one data directory", asy
     await first.initialize();
     await assertRejects(() => second.initialize(), Error, "already owns");
   } finally {
-    first.stop();
-    second.stop();
+    await first.stop();
+    await second.stop();
     await fs.rm(root, { recursive: true });
   }
 });
@@ -250,7 +250,7 @@ test("ExtensionManager retains historical packages and configuration when their 
       "not active",
     );
   } finally {
-    manager.stop();
+    await manager.stop();
     await fs.rm(root, { recursive: true, force: true });
   }
 });

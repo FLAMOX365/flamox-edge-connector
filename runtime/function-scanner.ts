@@ -16,7 +16,7 @@ import { importFunction } from "./function-loader.ts";
  * @module
  */
 
-import { extname, join, relative, resolve } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 import type { HttpContext, HttpHandler } from "@edge-connector/sdk/http";
 import { HTTP_METHODS, isHttpRouteDefinition } from "@edge-connector/sdk/http";
 import type { HttpMethod } from "@edge-connector/sdk/types";
@@ -380,7 +380,7 @@ export class HttpFunctionScanner {
     }
 
     // Skip files starting with underscore (shared/internal modules)
-    const fileName = path.split("/").pop() ?? "";
+    const fileName = basename(path);
     if (fileName.startsWith("_")) {
       return false;
     }
