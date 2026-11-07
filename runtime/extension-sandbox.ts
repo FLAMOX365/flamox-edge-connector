@@ -3,7 +3,11 @@ import {
   VENDORED_SRT_WIN_EXE,
 } from "@anthropic-ai/sandbox-runtime";
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { realpath } from "node:fs/promises";
+import { createServer, type Server, type ServerResponse } from "node:http";
+import type { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { parse, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +28,8 @@ type SandboxStart = {
 
 const maximumMessageBytes = 16 * 1024 * 1024;
 let child: ChildProcess | undefined;
+let input: Writable | undefined;
+let inputServer: Server | undefined;
 let starting: Promise<void> | undefined;
 let stopping = false;
 let protocolFailed = false;
@@ -47,16 +53,14 @@ process.on("message", (value: SandboxStart | ExtensionInboundMessage) => {
     });
     return;
   }
-  void starting?.then(() => {
-    const line = `${JSON.stringify(value)}\n`;
-    if (
-      Buffer.byteLength(line) > maximumMessageBytes ||
-      !child?.stdin?.write(line)
-    ) {
-      // Backpressure is bounded by a single protocol message, never an unbounded queue.
-      if (Buffer.byteLength(line) > maximumMessageBytes) void stop();
-    }
-  });
+  void starting?.then(
+    () => {
+      const line = `${JSON.stringify(value)}\n`;
+      if (Buffer.byteLength(line) > maximumMessageBytes) return void stop();
+      input?.write(line);
+    },
+    () => undefined,
+  );
 });
 
 process.once("disconnect", () => void stop());
@@ -148,10 +152,16 @@ async function start(options: SandboxStart): Promise<void> {
             literal: true as const,
           })),
   };
+  const windowsInput = windowsBroker
+    ? await listenForWindowsInput()
+    : undefined;
   await SandboxManager.initialize(
     {
       network: {
-        allowedDomains: [...options.network],
+        allowedDomains: [
+          ...options.network,
+          ...(windowsInput ? [windowsInput.authority] : []),
+        ],
         deniedDomains: [],
         allowLocalBinding: false,
         allowUnixSockets: [],
@@ -190,6 +200,7 @@ async function start(options: SandboxStart): Promise<void> {
       : []),
     "--max-old-space-size=128",
     worker,
+    ...(windowsInput ? [windowsInput.authority, windowsInput.token] : []),
   ];
   // SRT appends the command text as the final argument to a custom shell.
   // On Windows launch the worker directly, with that final argument unused.
@@ -229,7 +240,7 @@ async function start(options: SandboxStart): Promise<void> {
     env: wrapped.env,
     stdio:
       process.platform === "win32"
-        ? ["pipe", "pipe", "pipe"]
+        ? ["ignore", "pipe", "pipe"]
         : ["pipe", "ignore", "pipe", "pipe"],
   });
   const protocol = process.platform === "win32" ? child.stdout : child.stdio[3];
@@ -258,6 +269,53 @@ async function start(options: SandboxStart): Promise<void> {
   child.stderr?.resume();
   child.once("error", () => void stop());
   child.once("exit", () => void stop());
+  input = windowsInput
+    ? await windowsInput.response
+    : (child.stdin ?? undefined);
+  input?.once("error", () => void stop());
+}
+
+async function listenForWindowsInput(): Promise<{
+  authority: string;
+  token: string;
+  response: Promise<ServerResponse>;
+}> {
+  // The native Windows broker consumes stdin to launch its runner and does
+  // not pass the caller's input through. Use a one-time loopback response via
+  // this extension's own WFP-filtered proxy. The listener never serves content
+  // to unauthenticated requests and stops accepting after the worker connects.
+  const token = randomBytes(32).toString("hex");
+  const { promise: response, resolve } =
+    Promise.withResolvers<ServerResponse>();
+  let connected = false;
+  const server = createServer({ maxHeaderSize: 4096 }, (request, reply) => {
+    if (
+      connected ||
+      request.method !== "GET" ||
+      request.url !== "/" ||
+      request.headers.authorization !== `Bearer ${token}`
+    ) {
+      reply.writeHead(403, { connection: "close" }).end();
+      return;
+    }
+    connected = true;
+    server.close();
+    reply.writeHead(200, {
+      "content-type": "application/x-ndjson",
+      "cache-control": "no-store",
+    });
+    reply.flushHeaders();
+    reply.once("close", () => void stop());
+    resolve(reply);
+  });
+  inputServer = server;
+  const listening = once(server, "listening");
+  server.listen(0, "127.0.0.1");
+  await listening;
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Extension input channel has no local address.");
+  return { authority: `127.0.0.1:${address.port}`, token, response };
 }
 
 function failProtocol(): void {
@@ -285,6 +343,8 @@ function send(value: ExtensionOutboundMessage): Promise<void> {
 async function stop(): Promise<void> {
   if (stopping) return;
   stopping = true;
+  inputServer?.close();
+  inputServer?.closeAllConnections();
   child?.kill("SIGKILL");
   const force = setTimeout(() => process.exit(1), 2_000);
   force.unref();
