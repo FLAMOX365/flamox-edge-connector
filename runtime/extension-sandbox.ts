@@ -177,8 +177,7 @@ async function start(options: SandboxStart): Promise<void> {
       "The Windows extension sandbox requires profile access to be disabled.",
     );
   }
-  const args = [
-    executable,
+  const workerArgs = [
     "--permission",
     `--allow-fs-read=${directory}`,
     `--allow-fs-read=${worker}`,
@@ -187,7 +186,11 @@ async function start(options: SandboxStart): Promise<void> {
     "--max-old-space-size=128",
     worker,
   ];
-  const command = `${process.platform === "win32" ? "& " : ""}${args.map(quoteArgument).join(" ")}`;
+  // SRT appends the command text as the final argument to a custom shell.
+  // On Windows launch the worker directly, with that final argument unused.
+  const command = windowsBroker
+    ? ""
+    : [executable, ...workerArgs].map(quoteArgument).join(" ");
   // The read mask can cover /tmp after the wrapper's initial bind mounts.
   // Restore only the two sockets for this extension's authenticated proxy.
   const proxySockets = [
@@ -196,7 +199,7 @@ async function start(options: SandboxStart): Promise<void> {
   ].filter((path) => path !== undefined);
   const wrapped = await SandboxManager.wrapWithSandboxArgv(
     command,
-    process.platform === "win32" ? "powershell" : undefined,
+    windowsBroker ? { exe: executable, args: workerArgs } : undefined,
     proxySockets.length > 0
       ? {
           filesystem: {
@@ -289,9 +292,7 @@ async function stop(): Promise<void> {
 
 function quoteArgument(value: string): string {
   if (value.includes("\0")) throw new Error("Invalid process argument.");
-  return process.platform === "win32"
-    ? `'${value.replaceAll("'", "''")}'`
-    : `'${value.replaceAll("'", "'\\''")}'`;
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function linkedLibraries(executable: string): Promise<string[]> {
