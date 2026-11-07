@@ -1,7 +1,7 @@
 // #region Imports
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { rebaseDependabotPullRequests } from './rebaseDependabotPullRequests.mjs';
+import { rebaseDependabotPullRequests, advanceDependabotQueue } from './rebaseDependabotPullRequests.mjs';
 // #endregion
 
 const prefix = 'repos/FLAMOX365/flamox-edge-connector';
@@ -28,6 +28,8 @@ function fixture() {
     main: { name: 'main', commit: { sha: mainSha } },
     pull: {
       number: 7,
+      node_id: 'PR_fixture',
+      auto_merge: null,
       state: 'open',
       draft: false,
       merged: false,
@@ -37,7 +39,7 @@ function fixture() {
     },
     behind: 1,
     run: {
-      id: 202, event: 'pull_request', name: 'CI',
+      id: 202, run_attempt: 1, event: 'pull_request', name: 'CI',
       path: '.github/workflows/ci.yml',
       repository: identity, head_repository: identity,
       head_sha: 'b'.repeat(40), head_branch: 'dependabot/npm/update',
@@ -62,6 +64,15 @@ function fixture() {
       records.run.status = 'queued';
       return {};
     }
+    if (method === 'POST' && endpoint === 'graphql') {
+      records.pull.auto_merge = {};
+      return { data: { enablePullRequestAutoMerge: { pullRequest: {
+        number: 7, headRefOid: records.pull.head.sha, baseRefName: 'main',
+        state: 'OPEN', autoMergeRequest: { enabledAt: '2026-11-07T00:00:00Z' },
+      } } } };
+    }
+    if (method === 'POST' && endpoint === `${prefix}/actions/workflows/rebase-dependabot.yml/dispatches`)
+      return undefined;
     if (endpoint === `${prefix}/actions/runs/202`)
       return structuredClone(records.run);
     if (endpoint === 'repositories/1317851991') return structuredClone(records.repository);
@@ -83,12 +94,15 @@ test('updates the expected bot head and approves its native PR verification once
   const result = await rebaseDependabotPullRequests(context, dependencies);
   assert.deepEqual(result.updated, [7]);
   assert.deepEqual(result.approved, [7]);
-  assert.deepEqual(dependencies.calls.filter((call) => call.method !== 'GET'), [
+  const writes = dependencies.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.slice(0, 2), [
     { method: 'PUT', endpoint: `${prefix}/pulls/7/update-branch`,
       body: { expected_head_sha: 'b'.repeat(40) } },
     { method: 'POST', endpoint: `${prefix}/actions/runs/202/approve`,
       body: undefined },
   ]);
+  assert.equal(writes[2].endpoint, 'graphql');
+  assert.deepEqual(writes[2].body.variables, { id: 'PR_fixture' });
   const repeated = await rebaseDependabotPullRequests(context, dependencies);
   assert.deepEqual(repeated.updated, []);
   assert.deepEqual(repeated.approved, []);
@@ -142,7 +156,93 @@ test('does not approve a run that is already active or completed', async () => {
     const dependencies = fixture();
     dependencies.records.behind = 0;
     dependencies.records.run.conclusion = conclusion;
+    dependencies.records.pull.auto_merge = {};
     await rebaseDependabotPullRequests(context, dependencies);
     assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
   }
+});
+
+
+test('reuses exact-run validation when CI completed before auto-merge was enabled', async () => {
+  const dependencies = fixture();
+  dependencies.records.behind = 0;
+  dependencies.records.run.conclusion = 'success';
+  dependencies.merge = async (verification) => {
+    assert.equal(verification.eventName, 'push');
+    assert.equal(verification.ref, 'refs/heads/main');
+    assert.equal(verification.runId, 202);
+    assert.equal(verification.runAttempt, 1);
+    return { status: 'merged', sha: 'd'.repeat(40) };
+  };
+  const result = await rebaseDependabotPullRequests(context, dependencies);
+  assert.deepEqual(result.merged, [7]);
+  assert.equal(result.reason, 'main-changed');
+});
+
+test('recognizes an identical merge completed by a concurrent native request', async () => {
+  const dependencies = fixture();
+  dependencies.records.behind = 0;
+  dependencies.records.run.conclusion = 'success';
+  dependencies.merge = async () => {
+    Object.assign(dependencies.records.pull, {
+      merged: true, state: 'closed', merge_commit_sha: 'd'.repeat(40),
+    });
+    return { status: 'skipped' };
+  };
+  const result = await rebaseDependabotPullRequests(context, dependencies);
+  assert.deepEqual(result.merged, [7]);
+});
+
+test('starts the next queue iteration only after the actual main branch advances', async () => {
+  const dependencies = fixture();
+  dependencies.records.main.commit.sha = 'd'.repeat(40);
+  const result = await advanceDependabotQueue(context, {
+    status: 'completed', mainSha, pending: [{ number: 7, runId: 202 }],
+  }, dependencies);
+  assert.equal(result.status, 'advanced');
+  assert.deepEqual(dependencies.calls.filter((call) => call.method !== 'GET'), [{
+    method: 'POST', endpoint: `${prefix}/actions/workflows/rebase-dependabot.yml/dispatches`,
+    body: { ref: 'main' },
+  }]);
+});
+
+test('preserves failed verification and never dispatches a success continuation', async () => {
+  const dependencies = fixture();
+  dependencies.records.run.conclusion = 'failure';
+  const result = await advanceDependabotQueue(context, {
+    status: 'completed', mainSha, pending: [{ number: 7, runId: 202 }],
+  }, dependencies);
+  assert.equal(result.status, 'verification-failed');
+  assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('bounds waiting for a pending native merge without changing status checks', async () => {
+  const dependencies = fixture();
+  dependencies.records.run.status = 'in_progress';
+  dependencies.records.run.conclusion = null;
+  let sleeps = 0;
+  dependencies.sleep = async () => { sleeps++; };
+  const result = await advanceDependabotQueue(context, {
+    status: 'completed', mainSha, pending: [{ number: 7, runId: 202 }],
+  }, dependencies);
+  assert.equal(result.status, 'timed-out');
+  assert.equal(sleeps, 110);
+  assert.equal(dependencies.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('recovers when verification completes during native auto-merge enablement', async () => {
+  const dependencies = fixture();
+  dependencies.records.behind = 0;
+  const request = dependencies.request;
+  dependencies.request = async (method, endpoint, body) => {
+    if (endpoint === 'graphql') {
+      dependencies.records.run.conclusion = 'success';
+      return { errors: [{ message: 'Pull request is clean' }] };
+    }
+    return request(method, endpoint, body);
+  };
+  dependencies.merge = async () => ({ status: 'merged', sha: 'd'.repeat(40) });
+  const result = await rebaseDependabotPullRequests(context, dependencies);
+  assert.deepEqual(result.merged, [7]);
+  assert.equal(result.reason, 'main-changed');
 });

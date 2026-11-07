@@ -150,3 +150,16 @@ test('requires all platform jobs, the exact bot identity and current main', asyn
     );
   }
 });
+
+
+test('allows the trusted main queue owner and rejects a feature-branch owner', async () => {
+  const allowed = fixture();
+  assert.equal((await mergeDependabotPullRequest({
+    ...context, eventName: 'push', ref: 'refs/heads/main',
+  }, allowed)).status, 'merged');
+  const rejected = fixture();
+  assert.equal((await mergeDependabotPullRequest({
+    ...context, eventName: 'push', ref: 'refs/heads/feature',
+  }, rejected)).reason, 'unsupported-context');
+  assert.equal(rejected.calls.some((call) => call.method !== 'GET'), false);
+});
