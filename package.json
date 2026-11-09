@@ -55,7 +55,7 @@
     "@anthropic-ai/sandbox-runtime/zod": "4.6.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.4",
+    "@biomejs/biome": "^2.6.5",
     "@tauri-apps/cli": "2.12.4",
     "@types/node": "26.6.6",
     "@types/proper-lockfile": "^4.1.4",
