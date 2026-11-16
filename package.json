@@ -36,26 +36,26 @@
     "check:templates": "yarn workspaces foreach --all --include '@edge-examples/*' run check"
   },
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "0.0.81",
+    "@anthropic-ai/sandbox-runtime": "0.0.83",
     "@edge-connector/sdk": "workspace:*",
-    "@hono/node-server": "^2.1.6",
+    "@hono/node-server": "^2.1.8",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "ajv": "8.20.0",
     "esbuild": "0.28.2",
-    "hono": "^4.13.16",
+    "hono": "^4.13.18",
     "proper-lockfile": "^4.1.2",
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "undici": "^8.12.4",
-    "ws": "^8.22.1",
+    "ws": "^8.23.0",
     "yaml": "^2.9.1"
   },
   "resolutions": {
     "@anthropic-ai/sandbox-runtime/zod": "4.6.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.5",
+    "@biomejs/biome": "^2.6.7",
     "@tauri-apps/cli": "2.12.4",
     "@types/node": "26.6.6",
     "@types/proper-lockfile": "^4.1.4",
