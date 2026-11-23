@@ -50,6 +50,6 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "socks": "^2.8.10"
+    "socks": "^2.8.11"
   }
 }
